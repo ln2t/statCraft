@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --header-start: #2c3e50;
+            --header-end: #3498db;
+            --accent-pink: #d63384;
+            --accent-blue: #0d6efd;
+            --background-color: #f8f9fa;
+            --card-background: #ffffff;
+            --text-color: #333333;
+            --text-light: #666666;
+            --border-color: #dee2e6;
+            --warning-bg: #fff3cd;
+            --warning-text: #856404;
+            --warning-border: #ffc107;
+            --success-bg: #d4edda;
+            --success-text: #155724;
+            --success-border: #28a745;
+            --info-bg: #d1ecf1;
+            --info-border: #0c5460;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--background-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Sticky Navigation Bar */
+        nav.navbar {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: linear-gradient(to right, var(--header-start), var(--header-end));
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        nav.navbar .title {
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        nav.navbar ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            gap: 2rem;
+        }
+
+        nav.navbar a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+        }
+
+        nav.navbar a:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .page-wrapper {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            gap: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            margin-top: 0;
+        }
+
+        /* Sidebar for TOC - Fixed position */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 100px;
+            width: 250px;
+            height: calc(100vh - 100px);
+            overflow-y: auto;
+            padding: 1rem 1.5rem;
+            border-right: 1px solid var(--border-color);
+            background-color: var(--background-color);
+            z-index: 100;
+        }
+
+        .sidebar h3 {
+            margin: 0 0 0.5rem 0;
+            padding: 0.5rem;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar h3:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+            border-radius: 4px;
+        }
+
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sidebar li {
+            margin: 0.25rem 0;
+            line-height: 1.4;
+        }
+
+        .sidebar a {
+            text-decoration: none;
+            color: var(--text-color);
+            display: block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .sidebar a:hover {
+            background-color: rgba(52, 152, 219, 0.1);
+            color: var(--primary-color);
+        }
+
+        .toc-toggle {
+            font-size: 1rem;
+            transition: transform 0.3s ease;
+        }
+
+        .toc-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .main-content {
+            margin-left: 250px;
+            padding-left: 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        header h1 {
+            color: var(--secondary-color);
+            font-size: 2rem;
+            margin: 0 0 0.5rem 0;
+            font-weight: bold;
+        }
+
+        .metadata {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            margin: 0;
+        }
+
+        h2 {
+            color: white;
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, var(--header-start), var(--header-end));
+            padding: 1.5rem 2rem;
+            margin: 2rem 0 0 0;
+            border-radius: 10px 10px 0 0;
+            border-left: 3px solid var(--primary-color);
+            font-weight: bold;
+            text-align: left;
+        }
+
+        h3 {
+            color: var(--secondary-color);
+            font-size: 1.1rem;
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            text-align: left;
+        }
+
+        h4 {
+            color: var(--text-color);
+            font-size: 1rem;
+            margin-top: 1rem;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+            text-align: left;
+        }
+
+        /* Section header (Level 1) - just a visual separator, no card */
+        .section-header {
+            margin: 3rem 0 2rem 0;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            z-index: 1;
+        }
+
+        .section-header h2 {
+            color: white;
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, var(--header-start), var(--header-end));
+            padding: 1.5rem 2rem;
+            margin: 0;
+            border-radius: 10px;
+            border-left: 5px solid var(--primary-color);
+            font-weight: bold;
+            text-align: left;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-header:hover h2 {
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Subsection header (Level 2 without content) - smaller visual separator */
+        .subsection-header {
+            margin: 2rem 0 1rem 0;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            z-index: 1;
+        }
+
+        .subsection-header h3 {
+            color: var(--secondary-color);
+            font-size: 1.3rem;
+            padding: 0.75rem 1rem;
+            margin: 0;
+            border-left: 4px solid var(--primary-color);
+            background-color: #e8f4f8;
+            border-radius: 6px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .subsection-header:hover h3 {
+            background-color: #d6eef7;
+        }
+
+        /* Sub-subsection header (Level 3 without content) - even smaller separator */
+        .subsubsection-header {
+            margin: 1.5rem 0 0.75rem 0;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            z-index: 1;
+        }
+
+        .subsubsection-header h4 {
+            color: var(--text-color);
+            font-size: 1.1rem;
+            padding: 0.5rem 0.75rem;
+            margin: 0;
+            border-left: 3px solid var(--primary-color);
+            background-color: #f0f4f8;
+            border-radius: 4px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .subsubsection-header:hover h4 {
+            background-color: #e3eaf0;
+        }
+
+        .collapse-toggle {
+            font-size: 1.2rem;
+            transition: transform 0.3s ease;
+            opacity: 0.7;
+        }
+
+        .collapse-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .collapsible-content {
+            max-height: 100000px;
+            overflow: visible;
+            transition: max-height 0.5s ease, opacity 0.3s ease;
+            opacity: 1;
+            position: relative;
+            z-index: 0;
+        }
+
+        .collapsible-content.collapsed {
+            max-height: 0 !important;
+            overflow: hidden !important;
+            opacity: 0;
+        }
+
+        .section {
+            margin-bottom: 2rem;
+            padding: 2rem;
+            background-color: var(--card-background);
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: visible;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        /* Subsection styling - less prominent with light backgrounds */
+        .section.subsection {
+            margin-bottom: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+            background: linear-gradient(to bottom, #fafbfc 0%, #f8f9fa 100%);
+        }
+
+        .section.subsection:hover {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+            transform: translateY(-1px);
+            background: linear-gradient(to bottom, #f5f7fa 0%, #f0f2f5 100%);
+        }
+
+        /* Add specific colors for different section types */
+        .section.subsection h3 {
+            color: var(--secondary-color);
+            border-bottom: 2px solid #e1e8ed;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .section.subsection h4 {
+            color: var(--text-color);
+            border-bottom: 1px solid #e8edf2;
+            padding-bottom: 0.4rem;
+            margin-bottom: 0.75rem;
+        }
+
+        /* Figure sections with subtle tint */
+        .section.subsection:has(.figure) {
+            background: linear-gradient(to bottom, #fafeff 0%, #f5f9fb 100%);
+        }
+
+        /* Table sections with slight warmth */
+        .section.subsection:has(table) {
+            background: linear-gradient(to bottom, #fffef9 0%, #faf8f3 100%);
+        }
+
+        /* Center figures/plots within sections */
+        .section > .figure {
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+            width: fit-content;
+            text-align: center;
+        }
+
+        /* Ensure text content is left-aligned */
+        .section > h3,
+        .section > p,
+        .section > ul,
+        .section > ol,
+        .section > table,
+        .section > pre,
+        .section > code {
+            text-align: left;
+        }
+
+        .section:hover {
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .summary-card {
+            background-color: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border-left: 3px solid var(--primary-color);
+            transition: all 0.3s ease;
+        }
+
+        .summary-card:hover {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .summary-card h4 {
+            color: var(--secondary-color);
+            margin: 0 0 0.5rem 0;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .summary-card .value {
+            color: var(--primary-color);
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .figure {
+            text-align: center;
+            margin: 0.75rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            display: inline-block;
+            width: calc(50% - 1.5rem);
+            vertical-align: top;
+        }
+
+        .figure img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .figure img:hover {
+            cursor: pointer;
+            transform: scale(1.02);
+        }
+
+        .figure-caption {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background-color: #f8f9fa;
+            border-left: 3px solid var(--primary-color);
+            color: #495057;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            border-radius: 3px;
+        }
+
+        .btn-download-figure {
+            display: block;
+            margin-top: 1rem;
+            padding: 0.5rem 1rem;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+        }
+
+        .btn-download-figure:hover {
+            background-color: var(--header-end);
+        }
+
+        .btn-download-tsv {
+            display: inline-block;
+            margin-top: 0.5rem;
+            margin-right: 0.5rem;
+            padding: 0.4rem 0.8rem;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+        }
+
+        .btn-download-tsv:hover {
+            background-color: #218838;
+        }
+
+        .btn-download-latex {
+            display: inline-block;
+            margin-top: 0.5rem;
+            padding: 0.4rem 0.8rem;
+            background-color: #17a2b8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+        }
+
+        .btn-download-latex:hover {
+            background-color: #138496;
+        }
+
+        /* Lightbox Modal */
+        .lightbox {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .lightbox.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .lightbox-content {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 90%;
+            max-width: 1200px;
+            height: 90vh;
+            animation: slideIn 0.3s ease;
+        }
+
+        .lightbox img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 40px;
+            font-size: 2.5rem;
+            color: white;
+            cursor: pointer;
+            transition: color 0.3s ease;
+            background: none;
+            border: none;
+            padding: 0;
+            z-index: 2001;
+        }
+
+        .lightbox-close:hover {
+            color: var(--primary-color);
+        }
+
+        .lightbox-caption {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 1rem;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 1rem 1.5rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .lightbox-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 1rem 1.5rem;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            border-radius: 4px;
+            z-index: 2001;
+        }
+
+        .lightbox-nav:hover {
+            background-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .lightbox-nav.prev {
+            left: 20px;
+        }
+
+        .lightbox-nav.next {
+            right: 20px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        /* Empty content placeholder */
+        .empty-content {
+            padding: 2rem;
+            background-color: var(--background-color);
+            border-left: 4px solid var(--warning-border);
+            border-radius: 6px;
+            color: var(--warning-text);
+            font-style: italic;
+        }
+
+        /* Image Grid */
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem auto;
+            font-size: 0.95rem;
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            text-align: left;
+        }
+
+        th {
+            background: linear-gradient(to right, #ecf0f1, #bdc3c7);
+            color: var(--secondary-color);
+            font-weight: 600;
+            padding: 15px;
+            text-align: left;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+
+        tbody tr:hover {
+            background-color: #e8f4fc;
+            transition: background-color 0.2s ease;
+        }
+
+        code {
+            background-color: #f8f9fa;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: var(--accent-blue);
+        }
+
+        pre {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        ul {
+            padding-left: 25px;
+            text-align: left;
+        }
+
+        li {
+            margin-bottom: 0.8rem;
+            line-height: 1.8;
+        }
+
+        p {
+            text-align: left;
+        }
+
+        strong {
+            color: var(--secondary-color);
+            font-weight: 600;
+        }
+
+        /* Alert Boxes */
+        .alert {
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+            border-left: 4px solid;
+        }
+
+        .alert.warning {
+            background-color: var(--warning-bg);
+            color: var(--warning-text);
+            border-color: var(--warning-border);
+        }
+
+        .alert.success {
+            background-color: var(--success-bg);
+            color: var(--success-text);
+            border-color: var(--success-border);
+        }
+
+        .alert.info {
+            background-color: var(--info-bg);
+            color: var(--info-border);
+            border-color: var(--info-border);
+        }
+
+        .toc {
+            background-color: var(--card-background);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .toc h3 {
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+            color: var(--secondary-color);
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .toc ul {
+            list-style-type: none;
+            padding-left: 0;
+            margin: 0;
+        }
+
+        .toc li {
+            margin-bottom: 0.6rem;
+            font-size: 0.9rem;
+        }
+
+        .toc a {
+            color: var(--primary-color);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: block;
+            padding: 0.4rem 0.5rem;
+            border-left: 3px solid transparent;
+            border-radius: 4px;
+        }
+
+        .toc a:hover {
+            color: var(--header-end);
+            border-left-color: var(--primary-color);
+            background-color: var(--background-color);
+            padding-left: 1rem;
+        }
+
+        footer {
+            margin-top: 3rem;
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .page-wrapper {
+                grid-template-columns: 200px 1fr;
+                gap: 1.5rem;
+                padding: 1.5rem;
+            }
+
+            .sidebar {
+                width: 200px;
+                padding: 1.5rem;
+            }
+
+            .main-content {
+                margin-left: 200px;
+                padding-left: 1.5rem;
+            }
+
+            .toc h3 {
+                font-size: 0.9rem;
+            }
+
+            .toc a {
+                font-size: 0.85rem;
+            }
+
+            .figure {
+                width: calc(50% - 0.75rem);
+                margin: 0.75rem auto;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page-wrapper {
+                grid-template-columns: 1fr;
+                padding: 1rem;
+            }
+
+            .sidebar {
+                position: static;
+                width: 100%;
+                height: auto;
+                margin-bottom: 2rem;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+                padding: 1rem;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding-left: 0;
+            }
+
+            nav.navbar {
+                flex-direction: column;
+                gap: 1rem;
+                padding: 1rem;
+            }
+
+            nav.navbar ul {
+                gap: 1rem;
+            }
+
+            header {
+                padding-bottom: 1rem;
+                margin-bottom: 1.5rem;
+            }
+
+            header h1 {
+                font-size: 1.5rem;
+            }
+
+            h2 {
+                font-size: 1.25rem;
+                padding: 1rem 1.5rem;
+            }
+
+            .section {
+                padding: 1rem;
+            }
+
+            .summary-cards {
+                grid-template-columns: 1fr;
+            }
+
+            .image-grid {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                font-size: 0.85rem;
+            }
+
+            td, th {
+                padding: 10px;
+            }
+
+            .lightbox-nav {
+                padding: 0.75rem 1rem;
+                font-size: 1.25rem;
+            }
+
+            .lightbox-close {
+                font-size: 2rem;
+                right: 20px;
+            }
+
+            .toc {
+                margin-bottom: 1.5rem;
+            }
+
+            .figure {
+                display: block;
+                width: 100%;
+                margin: 1rem 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sticky Navigation Bar -->
+    <nav class="navbar">
+        <div class="title">{{ title }}</div>
+    </nav>
+
+    <div class="container">
+        <!-- Sidebar Table of Contents -->
+        {% if sections|length > 0 %}
+        <nav class="toc sidebar">
+            <h3 onclick="toggleTOC()">
+                Contents
+                <span class="toc-toggle" id="toc-toggle">▼</span>
+            </h3>
+            <ul id="toc-list">
+                {# Recursive macro to render nested TOC from nested_sections #}
+                {% macro render_toc(nodes, prefix='') -%}
+                    {%- for node in nodes -%}
+                        {%- set idx = loop.index0 -%}
+                        {%- set id = (prefix ~ ('-' if prefix else '') ~ idx) -%}
+                        <li style="margin-left: {{ (node.level - 1) * 1.5 }}rem; font-size: {{ 1.05 - (node.level-1)*0.05 }}rem;">
+                            <a href="#section-{{ id }}">{{ node.title }}</a>
+                        </li>
+                        {%- if node.children -%}
+                            {{ render_toc(node.children, id) }}
+                        {%- endif -%}
+                    {%- endfor -%}
+                {%- endmacro %}
+
+                {% if nested_sections is defined %}
+                    {{ render_toc(nested_sections) }}
+                {% else %}
+                    {# Fallback to flat sections if nesting not available #}
+                    {% for section in sections %}
+                        {% set level = section.get('level', 1) %}
+                        <li style="margin-left: {{ (level - 1) * 1.5 }}rem; font-size: {{ 1.05 - (level-1)*0.05 }}rem;">
+                            <a href="#section-{{ loop.index }}">{{ section.title }}</a>
+                        </li>
+                    {% endfor %}
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header>
+                <h1>{{ title }}</h1>
+                <p class="metadata">Generated on {{ date }}</p>
+            </header>
+            {# Render main content from nested_sections if available, to keep IDs consistent with the TOC #}
+            {% macro render_sections(nodes, prefix='') -%}
+                {%- for node in nodes -%}
+                    {%- set idx = loop.index0 -%}
+                    {%- set id = (prefix ~ ('-' if prefix else '') ~ idx) -%}
+                    {%- set level = node.level -%}
+
+                    {# Header / toggle row #}
+                    <div class="{{ 'section-header' if level==1 else 'subsection-header' if level==2 else 'subsubsection-header' if level==3 else 'section' }}" id="section-{{ id }}" onclick="toggleSection('section-{{ id }}')">
+                        {% if level == 1 %}
+                        <h2>
+                        {% elif level == 2 %}
+                        <h3>
+                        {% else %}
+                        <h4>
+                        {% endif %}
+                            {{ node.title }}
+                            <span class="collapse-toggle" id="toggle-section-{{ id }}">▼</span>
+                        {% if level == 1 %}
+                        </h2>
+                        {% elif level == 2 %}
+                        </h3>
+                        {% else %}
+                        </h4>
+                        {% endif %}
+                    </div>
+
+                    <div class="collapsible-content" id="content-section-{{ id }}">
+                        {# Node content (figures, tables, or raw HTML) #}
+                        {% if node.type == 'figure' %}
+                            {% if node.content in figures %}
+                            <div class="figure">
+                                <img src="data:image/png;base64,{{ figures[node.content] }}"
+                                     alt="{{ node.title }}"
+                                     class="lightbox-trigger"
+                                     data-figure-key="{{ node.content }}">
+                                <div class="figure-caption">
+                                    {% if node.caption %}
+                                        {{ node.caption }}
+                                    {% else %}
+                                        {{ node.title }} - Click to zoom
+                                    {% endif %}
+                                </div>
+                                <button class="btn-download-figure" onclick="downloadFigure('{{ node.content }}', '{{ node.title }}')">
+                                    ⬇ Download PNG
+                                </button>
+                            </div>
+                            {% endif %}
+                        {% elif node.type == 'table' %}
+                            {{ node.content | safe }}
+                        {% else %}
+                            {% if node.content.strip() %}
+                                {{ node.content | safe }}
+                            {% endif %}
+                        {% endif %}
+
+                        {# Render children recursively #}
+                        {% if node.children %}
+                            {{ render_sections(node.children, id) }}
+                        {% endif %}
+                    </div>
+                {%- endfor -%}
+            {%- endmacro %}
+
+            {% if nested_sections is defined %}
+                {{ render_sections(nested_sections) }}
+            {% else %}
+                {# Fallback: render flat sections the old way (keeps previous behavior) #}
+                {% for section in sections %}
+                <div class="section subsection" id="section-{{ loop.index }}">
+                    {% if section.level == 2 %}
+                    <h3>{{ section.title }}</h3>
+                    {% else %}
+                    <h4>{{ section.title }}</h4>
+                    {% endif %}
+
+                    {% if section.type == 'figure' %}
+                        {% if section.content in figures %}
+                        <div class="figure">
+                            <img src="data:image/png;base64,{{ figures[section.content] }}"
+                                 alt="{{ section.title }}"
+                                 class="lightbox-trigger"
+                                 data-figure-key="{{ section.content }}">
+                            <div class="figure-caption">
+                                {% if section.caption %}
+                                    {{ section.caption }}
+                                {% else %}
+                                    {{ section.title }} - Click to zoom
+                                {% endif %}
+                            </div>
+                            <button class="btn-download-figure" onclick="downloadFigure('{{ section.content }}', '{{ section.title }}')">
+                                ⬇ Download PNG
+                            </button>
+                        </div>
+                        {% endif %}
+                    {% elif section.type == 'table' %}
+                        {{ section.content | safe }}
+                    {% else %}
+                        {% if section.content.strip() %}
+                            {{ section.content | safe }}
+                        {% else %}
+                            <div class="empty-content">
+                                No significant results to display for this section.
+                            </div>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% endif %}
+
+            <footer style="margin-top: 3rem; padding: 2rem 0; text-align: center; color: #6c757d; border-top: 1px solid #e0e0e0;">
+                <p>Generated by StatCraft - Second-Level Neuroimaging Analysis Tool</p>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Lightbox Modal -->
+    <div class="lightbox" id="lightbox">
+        <div class="lightbox-content">
+            <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+            <button class="lightbox-nav prev" onclick="prevLightbox()">&#10094;</button>
+            <img id="lightbox-image" src="" alt="">
+            <button class="lightbox-nav next" onclick="nextLightbox()">&#10095;</button>
+            <div class="lightbox-caption" id="lightbox-caption"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentLightboxIndex = 0;
+        let lightboxImages = [];
+
+        // Initialize lightbox
+        document.addEventListener('DOMContentLoaded', function() {
+            const images = document.querySelectorAll('.lightbox-trigger');
+            images.forEach((img, index) => {
+                img.addEventListener('click', function() {
+                    currentLightboxIndex = index;
+                    openLightbox();
+                });
+                lightboxImages.push({
+                    src: img.src,
+                    alt: img.alt
+                });
+            });
+
+            // Keyboard navigation
+            document.addEventListener('keydown', function(event) {
+                if (document.getElementById('lightbox').classList.contains('active')) {
+                    if (event.key === 'Escape') closeLightbox();
+                    if (event.key === 'ArrowLeft') prevLightbox();
+                    if (event.key === 'ArrowRight') nextLightbox();
+                }
+            });
+
+            // Close lightbox when clicking outside image
+            document.getElementById('lightbox').addEventListener('click', function(event) {
+                if (event.target === this) {
+                    closeLightbox();
+                }
+            });
+
+            // Handle TOC link clicks to auto-expand collapsed sections
+            const tocLinks = document.querySelectorAll('.toc a[href^="#section-"]');
+            tocLinks.forEach(link => {
+                link.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    const targetId = this.getAttribute('href').substring(1); // Remove '#'
+                    expandAndNavigate(targetId);
+                });
+            });
+        });
+
+        function openLightbox() {
+            if (lightboxImages.length === 0) return;
+            const lightbox = document.getElementById('lightbox');
+            const img = lightboxImages[currentLightboxIndex];
+            document.getElementById('lightbox-image').src = img.src;
+            document.getElementById('lightbox-caption').textContent =
+                img.alt + ' (' + (currentLightboxIndex + 1) + '/' + lightboxImages.length + ')';
+            lightbox.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox() {
+            const lightbox = document.getElementById('lightbox');
+            lightbox.classList.remove('active');
+            document.body.style.overflow = 'auto';
+        }
+
+        function nextLightbox() {
+            if (lightboxImages.length === 0) return;
+            currentLightboxIndex = (currentLightboxIndex + 1) % lightboxImages.length;
+            openLightbox();
+        }
+
+        function prevLightbox() {
+            if (lightboxImages.length === 0) return;
+            currentLightboxIndex = (currentLightboxIndex - 1 + lightboxImages.length) % lightboxImages.length;
+            openLightbox();
+        }
+
+        // Collapsible sections functionality
+        function toggleSection(sectionId) {
+            const content = document.getElementById('content-' + sectionId);
+            const toggle = document.getElementById('toggle-' + sectionId);
+            
+            if (content && toggle) {
+                if (content.classList.contains('collapsed')) {
+                    content.classList.remove('collapsed');
+                    toggle.classList.remove('collapsed');
+                } else {
+                    content.classList.add('collapsed');
+                    toggle.classList.add('collapsed');
+                }
+            }
+        }
+
+        // Expand a section (without toggling - only expand if collapsed)
+        function expandSection(sectionId) {
+            const content = document.getElementById('content-' + sectionId);
+            const toggle = document.getElementById('toggle-' + sectionId);
+            
+            if (content && toggle) {
+                content.classList.remove('collapsed');
+                toggle.classList.remove('collapsed');
+            }
+        }
+
+        // Expand all parent sections and navigate to target
+        function expandAndNavigate(targetId) {
+            // Find the target element
+            const targetElement = document.getElementById(targetId);
+            if (!targetElement) {
+                console.warn('Target element not found:', targetId);
+                return;
+            }
+
+            // Find all parent collapsible-content elements
+            let currentElement = targetElement;
+            const parentsToExpand = [];
+            
+            while (currentElement && currentElement !== document.body) {
+                // Check if this element is a collapsible-content div
+                if (currentElement.classList && currentElement.classList.contains('collapsible-content')) {
+                    // Extract the section ID from the content div ID (format: "content-section-X")
+                    const contentId = currentElement.id;
+                    if (contentId && contentId.startsWith('content-section-')) {
+                        const sectionId = contentId.replace('content-', '');
+                        parentsToExpand.push(sectionId);
+                    }
+                }
+                currentElement = currentElement.parentElement;
+            }
+
+            // Expand all parent sections (reverse order to expand from outermost to innermost)
+            parentsToExpand.reverse().forEach(sectionId => {
+                expandSection(sectionId);
+            });
+
+            // Wait a brief moment for CSS transitions, then scroll to target
+            setTimeout(() => {
+                targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Add a highlight effect briefly
+                targetElement.style.transition = 'background-color 0.5s ease';
+                const originalBg = targetElement.style.backgroundColor;
+                targetElement.style.backgroundColor = '#fff3cd';
+                setTimeout(() => {
+                    targetElement.style.backgroundColor = originalBg;
+                }, 1500);
+            }, 100);
+        }
+
+        // Table of Contents collapse
+        function toggleTOC() {
+            const tocList = document.getElementById('toc-list');
+            const tocToggle = document.getElementById('toc-toggle');
+            
+            if (tocList && tocToggle) {
+                if (tocList.style.display === 'none') {
+                    tocList.style.display = 'block';
+                    tocToggle.classList.remove('collapsed');
+                } else {
+                    tocList.style.display = 'none';
+                    tocToggle.classList.add('collapsed');
+                }
+            }
+        }
+
+        // Configuration file handling
+        function toggleConfigContent() {
+            const configContent = document.getElementById('config-content');
+            const btn = document.getElementById('config-reveal-btn');
+
+            if (configContent) {
+                const isHidden = configContent.style.display === 'none';
+                configContent.style.display = isHidden ? 'block' : 'none';
+                btn.textContent = isHidden ? 'Hide Configuration' : 'Show Configuration';
+            }
+        }
+
+        function downloadConfigFile() {
+            const configData = document.getElementById('config-data');
+            const configText = document.getElementById('config-text');
+
+            if (!configData || !configText) return;
+
+            // Get the config content from the text element
+            const configContent = configText.textContent;
+            const configName = (window.configFileName || 'config.yaml');
+
+            // Create blob and download
+            const blob = new Blob([configContent], { type: 'text/yaml;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+
+            link.setAttribute('href', url);
+            link.setAttribute('download', configName);
+            link.style.visibility = 'hidden';
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+    // LaTeX table data storage
+    const latexTables = {{ latex_tables|tojson }};
+
+    // TSV table data storage
+    const tsvData = {{ tsv_data|tojson }};
+
+        // Download TSV table functionality
+        function downloadTSV(tsvKey, tableTitle) {
+            if (!tsvData || !tsvData[tsvKey]) {
+                console.warn(`TSV data '${tsvKey}' not found`);
+                return;
+            }
+
+            const tsvContent = tsvData[tsvKey];
+            const filename = tableTitle
+                .toLowerCase()
+                .replace(/[^a-z0-9\s-]/g, '')
+                .replace(/\s+/g, '_')
+                .slice(0, 100) + '.tsv';
+
+            // Create blob and download
+            const blob = new Blob([tsvContent], { type: 'text/tab-separated-values;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        // Download LaTeX table functionality
+        function downloadLatexTable(tableKey, tableTitle) {
+            if (!latexTables || !latexTables[tableKey]) {
+                console.warn(`LaTeX table '${tableKey}' not found`);
+                return;
+            }
+
+            const latexContent = latexTables[tableKey];
+            const filename = tableTitle
+                .toLowerCase()
+                .replace(/[^a-z0-9\s-]/g, '')
+                .replace(/\s+/g, '_')
+                .slice(0, 100) + '.tex';
+
+            // Create blob and download
+            const blob = new Blob([latexContent], { type: 'text/plain;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        // Figure download functionality
+        function downloadFigure(figureKey, figureTitle) {
+            const img = document.querySelector(`img[data-figure-key="${figureKey}"]`);
+            if (!img) return;
+
+            // Get the base64 image data
+            const src = img.src;
+            if (!src.startsWith('data:image')) return;
+
+            // Create a canvas to handle the image
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width;
+            canvas.height = img.naturalHeight || img.height;
+
+            const ctx = canvas.getContext('2d');
+            const image = new Image();
+
+            image.onload = function() {
+                ctx.drawImage(image, 0, 0);
+                canvas.toBlob(function(blob) {
+                    // Create filename from figure title, removing special characters
+                    const filename = figureTitle
+                        .toLowerCase()
+                        .replace(/[^a-z0-9\s-]/g, '')
+                        .replace(/\s+/g, '_')
+                        .slice(0, 100) + '.png';
+
+                    // Download the blob
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }, 'image/png');
+            };
+
+            image.src = src;
+        }
+
+        // Store config filename for download
+        document.addEventListener('DOMContentLoaded', function() {
+            const configName = document.querySelector('code') ? document.querySelector('code').textContent : null;
+            if (configName && configName.includes('.yaml')) {
+                window.configFileName = configName;
+            }
+        });
+    </script>
+</body>
+</html>

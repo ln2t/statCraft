@@ -1,0 +1,51 @@
+# Example configuration for two-sample t-test (group comparison)
+# Compares activation between two groups (e.g., patients vs controls)
+
+# Analysis type
+analysis_type: two-sample
+
+# BIDS filters for data selection
+bids_filters:
+  task: nback
+  session: baseline
+  space: MNI152NLin2009cAsym
+
+# File pattern for finding images
+file_pattern: "**/sub-*_task-nback_space-MNI152NLin2009cAsym_stat-effect_statmap.nii.gz"
+
+# Group comparison settings
+# The group_column must exist in participants.tsv
+group_comparison:
+  group_column: group  # Column name in participants.tsv
+  group1: patients     # Name of first group
+  group2: controls     # Name of second group
+
+# Contrasts will be automatically generated:
+# - patients_vs_controls (patients > controls)
+# You can add custom contrasts if needed
+contrasts: []
+
+# Statistical inference settings
+inference:
+  alpha: 0.05
+  height_threshold: 0.001
+  cluster_threshold: 10
+  two_sided: true
+  corrections:
+    - uncorrected
+    - fdr
+    - bonferroni
+
+# Atlas for cluster annotation
+atlas: harvard_oxford
+
+# Output settings
+output:
+  save_maps: true
+  save_tables: true
+  generate_report: true
+  report_filename: group_comparison_report.html
+
+# Computational settings
+n_jobs: 4
+verbose: 1

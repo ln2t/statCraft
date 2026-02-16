@@ -1,0 +1,51 @@
+# Example configuration for paired t-test
+# Compares activation between two conditions within the same subjects
+# (e.g., pre vs post treatment, session 1 vs session 2)
+
+# Analysis type
+analysis_type: paired
+
+# BIDS filters for data selection
+# Note: Include both conditions in filters
+bids_filters:
+  task: nback
+  session:
+    - pre
+    - post
+  space: MNI152NLin2009cAsym
+
+# File pattern for finding images
+file_pattern: "**/sub-*_ses-*_task-nback_space-MNI*_stat-effect_statmap.nii.gz"
+
+# Paired test settings
+# Defines how to pair images from different conditions
+paired_test:
+  pair_by: session    # BIDS entity to pair by (session, task, run, etc.)
+  condition1: pre     # First condition (e.g., baseline, session-1)
+  condition2: post    # Second condition (e.g., treatment, session-2)
+
+# Statistical inference settings
+inference:
+  alpha: 0.05
+  height_threshold: 0.001
+  cluster_threshold: 10
+  two_sided: true
+  corrections:
+    - uncorrected
+    - fdr
+    - bonferroni
+  run_permutation: false
+
+# Atlas for cluster annotation
+atlas: harvard_oxford
+
+# Output settings
+output:
+  save_maps: true
+  save_tables: true
+  generate_report: true
+  report_filename: paired_test_report.html
+
+# Computational settings
+n_jobs: 1
+verbose: 1

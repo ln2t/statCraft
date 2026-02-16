@@ -1,0 +1,42 @@
+# Example configuration for one-sample t-test
+# Tests whether mean activation is significantly different from zero
+
+# Analysis type
+analysis_type: one-sample
+
+# BIDS filters for data selection
+bids_filters:
+  task: nback
+  session: null  # Include all sessions
+  subject: null  # Include all subjects
+  space: MNI152NLin2009cAsym
+
+# File pattern for finding images in derivatives
+# Use glob patterns to match your specific file naming convention
+file_pattern: "**/sub-*_task-*_space-MNI152NLin2009cAsym_stat-effect_statmap.nii.gz"
+
+# Statistical inference settings
+inference:
+  alpha: 0.05  # Significance level for corrected thresholds
+  height_threshold: 0.001  # Uncorrected p-value threshold
+  cluster_threshold: 10  # Minimum cluster size in voxels
+  two_sided: true  # Use two-sided tests
+  corrections:
+    - uncorrected
+    - fdr
+    - bonferroni
+  run_permutation: false
+
+# Atlas for cluster annotation
+atlas: harvard_oxford
+
+# Output settings
+output:
+  save_maps: true
+  save_tables: true
+  generate_report: true
+  report_filename: report.html
+
+# Computational settings
+n_jobs: 1
+verbose: 1

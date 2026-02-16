@@ -1,0 +1,65 @@
+# Example configuration for GLM analysis with covariates
+# Uses a custom design matrix with participant variables
+
+# Analysis type
+analysis_type: glm
+
+# BIDS filters for data selection
+bids_filters:
+  task: nback
+  session: baseline
+  space: MNI152NLin2009cAsym
+
+# File pattern for finding images
+file_pattern: "**/sub-*_task-nback_space-MNI*_stat-effect_statmap.nii.gz"
+
+# Design matrix specification
+# Columns must exist in participants.tsv
+design_matrix:
+  columns:
+    - age
+    - group
+  add_intercept: true
+  categorical_columns:
+    - group  # Will be dummy-coded
+  standardize_continuous: true  # Z-score continuous variables
+
+# Contrasts to compute
+# Use nilearn's expression syntax
+contrasts:
+  - age                    # Effect of age (generates: effectOfAge)
+  - patients - controls    # Group difference (generates: patientsVersusControls)
+  - intercept              # Mean effect
+
+# Normalization settings (optional)
+normalization:
+  method: null  # Options: "mean", "custom_mask", null
+  mask: null    # Path to mask file if using custom_mask
+
+# Statistical inference settings
+inference:
+  alpha: 0.05
+  height_threshold: 0.001
+  cluster_threshold: 10
+  two_sided: true
+  corrections:
+    - uncorrected
+    - fdr
+    - bonferroni
+  run_permutation: false
+  n_permutations: 1000
+
+# Atlas for cluster annotation
+atlas: harvard_oxford
+
+# Output settings
+output:
+  save_maps: true
+  save_tables: true
+  generate_report: true
+  report_filename: glm_report.html
+
+# Computational settings
+n_jobs: 4
+verbose: 1
+random_state: 42  # For reproducible permutation tests
