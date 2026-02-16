@@ -55,10 +55,10 @@ dev = [
 statcraft = "statcraft.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/arovai/StatCraft"
-Documentation = "https://github.com/arovai/StatCraft#readme"
-Repository = "https://github.com/arovai/StatCraft"
-Issues = "https://github.com/arovai/StatCraft/issues"
+Homepage = "https://github.com/ln2t/StatCraft"
+Documentation = "https://github.com/ln2t/StatCraft#readme"
+Repository = "https://github.com/ln2t/StatCraft"
+Issues = "https://github.com/ln2t/StatCraft/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

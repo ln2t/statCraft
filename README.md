@@ -46,7 +46,7 @@ pip install statcraft
 ### From Source
 
 ```bash
-git clone https://github.com/arovai/StatCraft.git
+git clone https://github.com/ln2t/StatCraft.git
 cd StatCraft
 pip install -e .
 ```
@@ -54,7 +54,7 @@ pip install -e .
 ### Development Installation
 
 ```bash
-git clone https://github.com/arovai/StatCraft.git
+git clone https://github.com/ln2t/StatCraft.git
 cd StatCraft
 pip install -e ".[dev]"
 ```
@@ -343,7 +343,7 @@ If you use StatCraft in your research, please cite:
   title = {StatCraft: Second-Level Neuroimaging Analysis Tool},
   author = {StatCraft Contributors},
   year = {2024},
-  url = {https://github.com/arovai/StatCraft}
+  url = {https://github.com/ln2t/StatCraft}
 }
 ```
 

@@ -88,8 +88,8 @@ def create_parser() -> argparse.ArgumentParser:
 
     description = textwrap.dedent(f"""
     {Colors.BOLD}{Colors.GREEN}╔══════════════════════════════════════════════════════════════════════════════╗
-    ║                     StatCraft v{__version__:<58}║
-    ║                  BIDS-based Second-Level Analysis Tool                    ║
+    ║                     StatCraft v{__version__:<46}║
+    ║                  BIDS-based Second-Level Analysis Tool                       ║
     ╚══════════════════════════════════════════════════════════════════════════════╝{Colors.END}
 
     {Colors.BOLD}Description:{Colors.END}
@@ -125,90 +125,83 @@ def create_parser() -> argparse.ArgumentParser:
 
       {Colors.YELLOW}# Run analysis with config file{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -c config.yaml
+          --derivatives /data/derivatives/fmriprep --config config.yaml
 
     {Colors.BOLD}One-Sample Tests:{Colors.END}
 
       {Colors.YELLOW}# Process all subjects with default pattern{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample
+          --derivatives /data/derivatives/fmriprep --analysis-type one-sample
 
       {Colors.YELLOW}# Use specific glob pattern for images{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample -p '*gas*cvr*.nii.gz'
+          --derivatives /data/derivatives/fmriprep --analysis-type one-sample --pattern '*gas*cvr*.nii.gz'
 
       {Colors.YELLOW}# Exclude specific images from analysis{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample -p '*cvr*.nii.gz' -e '*label-bad*'
+          --derivatives /data/derivatives/fmriprep --analysis-type one-sample --pattern '*cvr*.nii.gz' --exclude '*label-bad*'
 
     {Colors.BOLD}Group Comparisons (Two-Sample):{Colors.END}
 
       {Colors.YELLOW}# Using group column in participants.tsv{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t two-sample --group-column group
+          --derivatives /data/derivatives/fmriprep --analysis-type two-sample --group-column group
 
       {Colors.YELLOW}# Using sample-specific patterns{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t two-sample \\
-          -P 'GS=*gas*GS*cvr*.nii.gz SSS=*gas*SSS*cvr*.nii.gz' -C 'GS-SSS'
+          --derivatives /data/derivatives/fmriprep --analysis-type two-sample \
+          --patterns 'GS=*gas*GS*cvr*.nii.gz SSS=*gas*SSS*cvr*.nii.gz' --contrast 'GS-SSS'
 
     {Colors.BOLD}Paired Comparisons:{Colors.END}
 
       {Colors.YELLOW}# Within-subject pairing by subject ID{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t paired --pair-by sub \\
-          -P 'pre=*pre*.nii.gz post=*post*.nii.gz' -C 'post-pre'
+          --derivatives /data/derivatives/fmriprep --analysis-type paired --pair-by sub \
+          --patterns 'pre=*pre*.nii.gz post=*post*.nii.gz' --contrast 'post-pre'
 
     {Colors.BOLD}General Linear Model (GLM):{Colors.END}
 
       {Colors.YELLOW}# Age effect on connectivity{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives --data-type connectivity \\
-          -t glm --regressors age -C age -p '**/*_connmat.npy'
+          --derivatives /data/derivatives --data-type connectivity \
+          --analysis-type glm --regressors age --contrast age --pattern '**/*_connmat.npy'
 
       {Colors.YELLOW}# Sex effect (categorical) controlling for age{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t glm \\
-          --regressors age sex --categorical-regressors sex -C 'sex_M-sex_F'
+          --derivatives /data/derivatives/fmriprep --analysis-type glm \
+          --regressors age sex --categorical-regressors sex --contrast 'sex_M-sex_F'
 
     {Colors.BOLD}BIDS Entity Filtering:{Colors.END}
 
       {Colors.YELLOW}# Process specific participants{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample -p participant 01 02 03
+          --derivatives /data/derivatives/fmriprep --analysis-type one-sample --participant-label 01 02 03
 
       {Colors.YELLOW}# Process specific task and session{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample --task rest --session 01
+          --derivatives /data/derivatives/fmriprep --analysis-type one-sample --task rest --session 01
 
       {Colors.YELLOW}# Filter by template space{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample --space MNI152NLin2009cAsym
-
-    {Colors.BOLD}Temporal Processing:{Colors.END}
-
-      {Colors.YELLOW}# Drop initial volumes and set minimum segment length{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample \\
-          --drop-initial 4 --min-segment-length 5
+          --derivatives /data/derivatives/fmriprep --analysis-type one-sample --space MNI152NLin2009cAsym
 
     {Colors.BOLD}Advanced Options:{Colors.END}
 
       {Colors.YELLOW}# Enable permutation testing{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample --permutation
+          --derivatives /data/derivatives/fmriprep --analysis-type one-sample --permutation
 
       {Colors.YELLOW}# Custom atlas and cluster analysis{Colors.END}
       statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample \\
+          --derivatives /data/derivatives/fmriprep --analysis-type one-sample \
           --atlas aal --extra-cluster-analysis
 
     {Colors.BOLD}{Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
     {Colors.BOLD}MORE INFORMATION{Colors.END}
     {Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
 
-      Documentation:  https://github.com/arovai/StatCraft
-      Report Issues:  https://github.com/arovai/StatCraft/issues
+      Documentation:  https://github.com/ln2t/StatCraft
+      Report Issues:  https://github.com/ln2t/StatCraft/issues
       Version:        {__version__}
     """)
 
@@ -514,50 +507,9 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     # =========================================================================
-    # TEMPORAL PROCESSING OPTIONS
-    # =========================================================================
-    temporal = parser.add_argument_group(
-        f'{Colors.BOLD}Temporal Processing Options{Colors.END}',
-        "Options for temporal volume selection and segmentation."
-    )
-
-    temporal.add_argument(
-        "--threshold",
-        metavar="VALUE",
-        type=float,
-        dest="threshold",
-        help="Quality threshold for volume selection. Volumes below threshold excluded.",
-    )
-
-    temporal.add_argument(
-        "--extend",
-        metavar="N",
-        type=int,
-        default=0,
-        help="Extend exclusion to N volumes before AND after flagged volumes (default: 0).",
-    )
-
-    temporal.add_argument(
-        "--min-segment-length",
-        metavar="N",
-        type=int,
-        dest="min_segment_length",
-        default=0,
-        help="Minimum contiguous segment length to retain after exclusion. Requires --threshold (default: 0).",
-    )
-
-    temporal.add_argument(
-        "--drop-initial",
-        metavar="N",
-        type=int,
-        dest="drop_initial",
-        default=0,
-        help="Number of initial volumes to drop (default: 0).",
-    )
-
-    # =========================================================================
     # INFERENCE / STATISTICS OPTIONS
     # =========================================================================
+
     inference = parser.add_argument_group(
         f'{Colors.BOLD}Inference Options{Colors.END}',
         "Statistical testing parameters."

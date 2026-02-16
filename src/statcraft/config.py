@@ -416,7 +416,7 @@ def create_default_config(output_path: Union[str, Path]) -> Path:
 #   OR
 #   statcraft /path/to/bids /path/to/output -d /path/to/derivatives --config this_file.yaml
 #
-# For more information, visit: https://github.com/arovai/StatCraft
+# For more information, visit: https://github.com/ln2t/StatCraft
 # ===============================================================================
 
 # -------------------------------------------------------------------------------
