@@ -278,11 +278,14 @@ class DesignMatrixBuilder:
     def _translate_contrast_expression(self, contrast_expression: str) -> str:
         """
         Translate original categorical values in contrast expressions to dummy column names.
+        Also translates "mean" to "intercept" for user convenience.
         
         Examples:
         - "M-F" -> "sex_M-sex_F"
         - "0.5*M+0.5*F" -> "0.5*sex_M+0.5*sex_F"
         - "age" -> "age" (unchanged if not categorical)
+        - "mean" -> "intercept" (mean refers to intercept)
+        - "0.5*M+0.5*F-mean" -> "0.5*sex_M+0.5*sex_F-intercept"
         
         Parameters
         ----------
@@ -295,6 +298,9 @@ class DesignMatrixBuilder:
             Translated contrast expression using dummy column names.
         """
         translated = contrast_expression
+        
+        # First, translate "mean" to "intercept" (case-insensitive word boundary)
+        translated = re.sub(r'\bmean\b', 'intercept', translated, flags=re.IGNORECASE)
         
         # Sort by length (descending) to replace longer values first
         # This avoids issues with substring replacement (e.g., "F" matching before "FAL")
@@ -325,6 +331,7 @@ class DesignMatrixBuilder:
         
         Uses nilearn's expression_to_contrast_vector for parsing.
         Supports using original categorical values in contrast expressions.
+        The keyword "mean" is translated to "intercept" for user convenience.
         
         Parameters
         ----------
@@ -334,6 +341,8 @@ class DesignMatrixBuilder:
             - "sex_M-sex_F" (dummy-coded categorical)
             - "M-F" (using original categorical values)
             - "patients-controls" (using original categorical values)
+            - "mean" (refers to intercept)
+            - "0.5*M+0.5*F-mean" (average vs intercept)
         name : str, optional
             Custom name for the contrast. If None, auto-generated.
         
@@ -348,6 +357,7 @@ class DesignMatrixBuilder:
         >>> builder.add_contrast("sex_M-sex_F")  # Males vs Females (dummy-coded)
         >>> builder.add_contrast("M-F")  # Males vs Females (original values)
         >>> builder.add_contrast("0.5*M+0.5*F")  # Average effect across sexes
+        >>> builder.add_contrast("mean")  # Test the intercept
         """
         if self.design_matrix is None:
             raise ValueError("Must build design matrix before adding contrasts")

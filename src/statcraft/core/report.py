@@ -1011,9 +1011,9 @@ class ReportGenerator:
         <h3>How to Cite</h3>
         <p>If you use StatCraft in your research, please cite:</p>
         <div style="background-color: #f8f9fa; border-left: 4px solid var(--primary-color); padding: 1rem; margin: 1rem 0;">
-            <p style="margin: 0; font-family: 'Courier New', monospace; font-size: 0.9rem;">
+                <p style="margin: 0; font-family: 'Courier New', monospace; font-size: 0.9rem;">
                 StatCraft: Second-Level Neuroimaging Analysis Tool<br>
-                Available at: <a href="https://github.com/arovai/StatCraft" target="_blank">https://github.com/arovai/StatCraft</a>
+                Available at: <a href="https://github.com/ln2t/StatCraft" target="_blank">https://github.com/ln2t/StatCraft</a>
             </p>
         </div>
         
@@ -1026,7 +1026,7 @@ class ReportGenerator:
         </ul>
         
         <h3>Source Code</h3>
-        <p>The complete source code is available at: <a href="https://github.com/arovai/StatCraft" target="_blank">https://github.com/arovai/StatCraft</a></p>
+        <p>The complete source code is available at: <a href="https://github.com/ln2t/StatCraft" target="_blank">https://github.com/ln2t/StatCraft</a></p>
         """
         self.add_section("Citation", html, "text", level=1)
 
@@ -2350,7 +2350,7 @@ class ReportGenerator:
         html += """
         <footer>
             <p>&copy; StatCraft - BIDS-based Second-Level Neuroimaging Analysis Tool</p>
-            <p><a href="https://github.com/arovai/StatCraft" style="color: #667eea; text-decoration: none;">Documentation & Source Code</a></p>
+            <p><a href="https://github.com/ln2t/StatCraft" style="color: #667eea; text-decoration: none;">Documentation & Source Code</a></p>
         </footer>
     </div>
 </body>

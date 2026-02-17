@@ -46,9 +46,13 @@ CLI tool for second-level neuroimaging analysis, supporting group-level comparis
 
 ## Installation
 
+We strongly recommend to use a virtual environment to work with this project
+
 ```bash
-git clone https://github.com/arovai/statCraft.git
+git clone https://github.com/ln2t/statCraft.git
 cd statCraft
+python -m venv
+source venv/bin/activate
 pip install -e .
 ```
 
@@ -58,35 +62,66 @@ pip install -e .
 
 #### Usage Patterns
 
-StatCraft uses flexible pattern matching for file discovery. The idea is that you point to one or more directories and define filenaming patterns using wildcards, and this define the data on which the second-level analysis will be performed.
-
-This allows the user to use this tool in a variety of first-level tools without any particular contraints on the output structure.
+StatCraft uses flexible pattern matching for file discovery. The idea is that you point to one or more directories and define filenaming patterns using wildcards, and this defines the data on which the second-level analysis will be performed.
 
 Here are the typical usage, depending on the analysis type:
 
 **One-sample t-tests**
 
 ```bash
-statcraft <INPUD_DIR> <OUTPUT_DIR> --analysis-type one-sample --pattern "PATTERN"
+statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type one-sample --pattern "PATTERN"
 ```
 The pipeline will search for files matching `PATTERN` in the `<INPUT_DIR>` (exploring subfolders), perform the one-sample t-test, and save the results in `<OUTPUT_DIR>`.
+
+*Example:*
+
+A one-sample t-test on maps from first-level `beta1` maps with `task-motor` in the name:
+```bash
+statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type one-sample --pattern "*task-motor*beta1*.nii.gz"
+```
 
 **Two-sample t-tests**
 
 The logic is similar as above, except that now one must specify two patterns to define the two groups to compare. We can also assign these groups custom names to ease the output filenaming:
 ```bash
-statcraft <INPUD_DIR> <OUTPUT_DIR> --analysis-type two-samples --patterns "Group1=PATTERN1 Group2=PATTERN2"
+statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type two-sample --patterns "Group1=PATTERN1 Group2=PATTERN2"
 ```
-The strings `Group1` and `Group2` are artitraty and are used in the output filenaming and in the analysis report.
+The strings `Group1` and `Group2` are arbitrary and are used in the output filenaming and in the analysis report.
+
+*Example:*
+
+If you have distinguishable names between the two groups you want to compare (e.g. `c001, c002, ...` for "controls" and `p001, p002, ...` for "patients"):
+```bash
+statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type two-sample --patterns "controls=sub-c*.nii.gz patients=sub-p*.nii.gz"
+```
+Of course, you can also use the GLM approach to have groups defined in a spreadsheet (see below), which has the advantage of being independent of your participant-naming choices.
 
 **Paired t-tests**
 
-This case is similar to the two-samples case except that one must provide a key to pair the data across the two groups. We do this by using the `--pair-by` argument:
+This case is similar to the two-sample case except that one must provide a key to pair the data across the two groups. We do this by using the `--pair-by` argument:
 ```bash
-statcraft <INPUD_DIR> <OUTPUT_DIR> --analysis-type paired --patterns "Group1=PATTERN1 Group2=PATTERN2" --pair-by "sub"
+statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type paired --patterns "Group1=PATTERN1 Group2=PATTERN2" --pair-by "ENTITY"
 ```
-The pairing is done by using the value given in `--pair-by` using a BIDS-like `key-value` structure: for instance, for `--pair-by "sub"`, files with `sub-001_*` will be paired together.
-*Note:* `--pair-by` is optional, it's default value being `sub`.
+The pairing is done using BIDS-like `key-value` structures in filenames. For instance:
+- `--pair-by "sub"` (default): Files with `sub-001`, `sub-002`, etc. will be paired together
+- `--pair-by "ses"`: Files with `ses-pre`, `ses-post`, etc. will be paired together
+- `--pair-by "run"`: Files with `run-1`, `run-2`, etc. will be paired together
+
+Supports both BIDS abbreviations (`sub`, `ses`, `run`, `task`, etc.) and full names (`subject`, `session`, `run`, etc.).
+
+*Note:* `--pair-by` is optional, with default value `sub`.
+
+*Examples:*
+
+Compare maps from session 1 to session 2, paired by subjects (using default `--pair-by sub`):
+```bash
+statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type paired --patterns "session1=*ses-1*.nii.gz session2=*ses-2*.nii.gz"
+```
+
+Pair by session instead of subject (if you have multiple sessions and want to pair conditions within sessions):
+```bash
+statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type paired --patterns "pre=*ses-pre*.nii.gz post=*ses-post*.nii.gz" --pair-by "ses"
+```
 
 **General Linear Model (GLM)**
 
@@ -98,76 +133,18 @@ sub-001 F 42  ...
 sub-CTL1 F 93  ...
 sub-abcd M 17  ...
 ```
-By default, a design matrix is build using all the columns of this file. If only a subset of columns should be included, this can be achieved using the `--regressors` option. Moreover, columns that should be treated as categorical can be specified with `--categorical-regressors` (dummy-coded in the analysis). Finally, the constrast to compute is defined using the `--contrasts` argument.
+By default, a design matrix is built using all the columns of this file. If only a subset of columns should be included, this can be achieved using the `--regressors` option. Moreover, columns that should be treated as categorical can be specified with `--categorical-regressors` (dummy-coded in the analysis). Finally, the contrast to compute is defined using the `--contrasts` argument.
 
-Here is a complete example featuring this functionality:
+Here is a example featuring this functionality:
 ```bash
-statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type glm --participant-files <PATH_TO_PARTICIPANTS.TSV> --regressors sex age IQ --categorical-regressors sex --contrasts age M-F
+statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type glm --participant-files <PATH_TO_PARTICIPANTS.TSV> --regressors sex age IQ --categorical-regressors sex --contrasts age M-F --pattern "*stat-effect*.nii.gz
 ```
-In this example: colums `sex`, `age` and `IQ` are used to build the design matrix, with `sex` being treated as a categorical variable, and two contrasts are computed: the effet of `age` as well as the difference between `M` and `F` (assuming those are the labels in original `participants.tsv` file).
+In this example: columns `sex`, `age` and `IQ` are used to build the design matrix, with `sex` being treated as a categorical variable, and two contrasts are computed: the effect of `age` as well as the difference between `M` and `F` (assuming those are the labels in original `participants.tsv` file).
 
 *Notes*: 
 - By default, non-categorical variables are z-scored. To control this, one can use `--no-standardize-regressors`, e.g. `--no-standardize-regressors IQ`
-- An intercept is also added in the design matrix. Contrasts using the intercept can be build using the word `mean`, e.g. `--contrats mean`. To remove the interecept, use `--no-intercept` option.
-- Non-trivial constrasts can be build using simple operands, e.g. `--contrasts 0.5*M+0.5*F-mean`
-
-**File Discovery**
-
-All file discovery uses glob patterns specified with `--pattern`. Include task, session, space, and other filters directly in your pattern:
-```bash
-# Pattern with embedded filters
---pattern '*task-rest*ses-01*space-MNI152*stat-effect*.nii.gz'
-```
-
-#### Examples
-
-```bash
-# One-sample t-test with pattern matching
-statcraft /data/dataset /data/output group \
-    --derivatives /data/derivatives/fmriprep \
-    --analysis-type one-sample \
-    --pattern '*task-nback*space-MNI152*stat-effect*.nii.gz'
-
-# One-sample with specific participants
-statcraft /data/dataset /data/output group \
-    --derivatives /data/derivatives/fmriprep \
-    --analysis-type one-sample \
-    --participant-label 01 02 03 \
-    --pattern '*task-rest*.nii.gz'
-
-# Derivatives-only with explicit participants file
-statcraft /data/derivatives/fmriprep /data/output group \
-    --participants-file /data/rawdata/participants.tsv \
-    --analysis-type one-sample \
-    --pattern '*task-nback*stat-effect*.nii.gz'
-
-# Two-sample t-test (group comparison)
-statcraft /data/dataset /data/output group \
-    --derivatives /data/derivatives/fmriprep \
-    --analysis-type two-sample \
-    --group-column group \
-    --pattern '*stat-effect*.nii.gz'
-
-# Paired t-test with sample patterns
-statcraft /data/dataset /data/output group \
-    --derivatives /data/derivatives/fmriprep \
-    --analysis-type paired \
-    --pair-by sub \
-    --patterns 'pre=*ses-pre*.nii.gz post=*ses-post*.nii.gz' \
-    --contrast 'post-pre'
-
-# Method comparison (two-sample with patterns)
-statcraft /data/dataset /data/output group \
-    --derivatives /data/derivatives/cvrmap \
-    --analysis-type two-sample \
-    --patterns 'GS=**/*GS*cvr*.nii.gz SSS=**/*SSS*cvr*.nii.gz' \
-    --contrast 'GS-SSS'
-
-# Using a configuration file
-statcraft /data/dataset /data/output group \
-    --derivatives /data/derivatives/fmriprep \
-    --config config.yaml
-```
+- An intercept is also added in the design matrix. Contrasts using the intercept can be built using the word `mean`, e.g. `--contrasts mean`. To remove the intercept, use `--no-intercept` option.
+- Non-trivial contrasts can be built using simple operands, e.g. `--contrasts 0.5*M+0.5*F-mean`
 
 ## Configuration
 
@@ -271,7 +248,7 @@ If you use StatCraft in your research, please cite:
   title = {StatCraft: Second-Level Neuroimaging Analysis Tool},
   author = {StatCraft Contributors},
   year = {2024},
-  url = {https://github.com/arovai/StatCraft}
+  url = {https://github.com/ln2t/StatCraft}
 }
 ```
 

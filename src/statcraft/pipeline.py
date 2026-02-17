@@ -508,6 +508,13 @@ class StatCraftPipeline:
             dm_config = self.config.get("design_matrix", {})
             columns = columns or dm_config.get("columns", [])
             
+            # Handle "all" keyword: use all columns from participants.tsv
+            if columns == "all":
+                # Get all columns except 'participant_id' (and similar standard columns)
+                excluded_cols = {'participant_id', 'subject_id', 'sub', 'subject'}
+                columns = [c for c in participants.columns if c.lower() not in excluded_cols]
+                logger.info(f"Using all columns from participants.tsv: {columns}")
+            
             if not columns:
                 # Default: one-sample (intercept only)
                 self._design_matrix = self.design_matrix_builder.build_one_sample_design_matrix(
@@ -556,9 +563,16 @@ class StatCraftPipeline:
         
         if not contrast_specs:
             # Default contrast: test intercept / mean
+            # Check if intercept exists in the design matrix
+            if "intercept" not in self._design_matrix.columns:
+                raise ValueError(
+                    "Cannot use default 'mean' contrast when --no-intercept is specified. "
+                    "Please provide explicit contrast(s) using --contrasts (e.g., --contrasts age sex_M-sex_F). "
+                    "The default contrast tests the intercept, which is not present when --no-intercept is used."
+                )
             logger.info("No contrasts specified, using default (intercept)")
             n_cols = len(self._design_matrix.columns)
-            self.design_matrix_builder.contrasts["mean_effect"] = np.array(
+            self.design_matrix_builder.contrasts["effectOfMean"] = np.array(
                 [1.0] + [0.0] * (n_cols - 1)
             )
         else:
@@ -2910,8 +2924,12 @@ class StatCraftPipeline:
         # Normalize the entity key (e.g., "sub" -> "subject")
         pair_by = self._normalize_bids_entity_key(pair_by_input)
 
-        logger.info(f"Pairing by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}')")
-        print(f"\nPairing files by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}')")
+        if pair_by_input != "sub":
+            logger.info(f"Pairing by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}') [CUSTOM PAIRING]")
+            print(f"\nPairing files by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}') [CUSTOM PAIRING]")
+        else:
+            logger.info(f"Pairing by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}') [DEFAULT]")
+            print(f"\nPairing files by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}') [DEFAULT]")
         print("=" * 80)
 
         # Create pairs based on the pairing entity
@@ -3724,22 +3742,15 @@ class StatCraftPipeline:
                 contrast_name=contrast_name,
             )
         else:
-            # GLM analysis
+            # GLM analysis - compute all contrasts
             self.connectivity_glm.fit(matrices, self._design_matrix)
-            contrast_name = list(self.design_matrix_builder.contrasts.keys())[0]
-            contrast_vector = self.design_matrix_builder.contrasts[contrast_name]
-            results = self.connectivity_glm.compute_contrast(
-                contrast_vector,
-                contrast_name=contrast_name,
-            )
+            for contrast_name, contrast_vector in self.design_matrix_builder.contrasts.items():
+                results = self.connectivity_glm.compute_contrast(
+                    contrast_vector,
+                    contrast_name=contrast_name,
+                )
 
-        # Get result info
-        glm_result = self.connectivity_glm.results[contrast_name]
-        t_matrix = glm_result['maps']['t_matrix']
-        p_matrix = glm_result['maps']['p_matrix']
-        df = glm_result['df']
-
-        # Run inference
+        # Run inference for all contrasts
         logger.info("Running statistical inference on edges...")
         self.connectivity_inference = ConnectivityInference(
             alpha_corrected=self.config.get("alpha_corrected", 0.05),
@@ -3758,50 +3769,56 @@ class StatCraftPipeline:
                 corrections = list(corrections) + ["fwer_perm"]
                 logger.info(f"Added permutation testing to corrections: {corrections}")
         
-        for correction in corrections:
-            if correction == "fdr":
-                self.connectivity_inference.threshold_fdr(
-                    t_matrix, p_matrix, df,
-                    contrast_name=contrast_name,
-                )
-            elif correction == "bonferroni":
-                self.connectivity_inference.threshold_bonferroni(
-                    t_matrix, p_matrix, df,
-                    contrast_name=contrast_name,
-                )
-            elif correction == "uncorrected":
-                self.connectivity_inference.threshold_uncorrected(
-                    t_matrix, p_matrix, df,
-                    contrast_name=contrast_name,
-                )
-            elif correction in ["fwer_perm", "permutation"]:
-                # Permutation testing for connectivity using nilearn's permuted_ols
-                logger.info(f"Running permutation testing for connectivity analysis...")
-                n_perm = inf_config.get("n_permutations", 1000)
-                n_jobs = inf_config.get("n_jobs", 1)
-                random_state = inf_config.get("random_state", None)
-                
-                # Get vectorized connectivity data from the GLM
-                connectivity_data = self.connectivity_glm._matrices
-                if connectivity_data is None:
-                    raise ValueError("Connectivity GLM has no stored data. Cannot run permutation testing.")
-                
-                try:
-                    self.connectivity_inference.threshold_fwer_permutation(
+        # Run inference for each contrast
+        for contrast_name, glm_result in self.connectivity_glm.results.items():
+            t_matrix = glm_result['maps']['t_matrix']
+            p_matrix = glm_result['maps']['p_matrix']
+            df = glm_result['df']
+            
+            for correction in corrections:
+                if correction == "fdr":
+                    self.connectivity_inference.threshold_fdr(
                         t_matrix, p_matrix, df,
-                        connectivity_data=connectivity_data,
-                        design_matrix=self._design_matrix.values if self._design_matrix is not None else np.array([]),
-                        contrast_vector=self.design_matrix_builder.contrasts.get(contrast_name, np.array([])) if self.design_matrix_builder else np.array([]),
-                        n_perm=n_perm,
                         contrast_name=contrast_name,
-                        n_jobs=n_jobs,
-                        random_state=random_state,
                     )
-                    logger.info(f"✓ Permutation test completed successfully for connectivity")
-                except Exception as e:
-                    logger.warning(f"Permutation test failed for connectivity: {e}")
-                    import traceback
-                    traceback.print_exc()
+                elif correction == "bonferroni":
+                    self.connectivity_inference.threshold_bonferroni(
+                        t_matrix, p_matrix, df,
+                        contrast_name=contrast_name,
+                    )
+                elif correction == "uncorrected":
+                    self.connectivity_inference.threshold_uncorrected(
+                        t_matrix, p_matrix, df,
+                        contrast_name=contrast_name,
+                    )
+                elif correction in ["fwer_perm", "permutation"]:
+                    # Permutation testing for connectivity using nilearn's permuted_ols
+                    logger.info(f"Running permutation testing for connectivity analysis ({contrast_name})...")
+                    n_perm = inf_config.get("n_permutations", 1000)
+                    n_jobs = inf_config.get("n_jobs", 1)
+                    random_state = inf_config.get("random_state", None)
+                    
+                    # Get vectorized connectivity data from the GLM
+                    connectivity_data = self.connectivity_glm._matrices
+                    if connectivity_data is None:
+                        raise ValueError("Connectivity GLM has no stored data. Cannot run permutation testing.")
+                    
+                    try:
+                        self.connectivity_inference.threshold_fwer_permutation(
+                            t_matrix, p_matrix, df,
+                            connectivity_data=connectivity_data,
+                            design_matrix=self._design_matrix.values if self._design_matrix is not None else np.array([]),
+                            contrast_vector=self.design_matrix_builder.contrasts.get(contrast_name, np.array([])) if self.design_matrix_builder else np.array([]),
+                            n_perm=n_perm,
+                            contrast_name=contrast_name,
+                            n_jobs=n_jobs,
+                            random_state=random_state,
+                        )
+                        logger.info(f"✓ Permutation test completed successfully for connectivity ({contrast_name})")
+                    except Exception as e:
+                        logger.warning(f"Permutation test failed for connectivity ({contrast_name}): {e}")
+                        import traceback
+                        traceback.print_exc()
 
 
         # Save results with BIDS naming
@@ -3829,7 +3846,9 @@ class StatCraftPipeline:
         # Generate report
         output_config = self.config.get("output", {})
         if output_config.get("generate_report", True):
-            report_path = self._generate_connectivity_report(contrast_name)
+            # Generate reports for all contrasts
+            contrast_names = list(self.connectivity_glm.results.keys())
+            report_path = self._generate_connectivity_report(contrast_names)
             saved_files["report"] = report_path
 
         logger.info("Connectivity analysis completed successfully!")
@@ -3842,25 +3861,33 @@ class StatCraftPipeline:
             "saved_files": saved_files,
         }
 
-    def _generate_connectivity_report(self, contrast_name: str) -> Path:
+    def _generate_connectivity_report(self, contrast_names: Union[str, List[str]]) -> Path:
         """
         Generate HTML report for connectivity analysis.
 
         Parameters
         ----------
-        contrast_name : str
-            Name of the contrast analyzed.
+        contrast_names : str or list of str
+            Name(s) of the contrast(s) analyzed.
 
         Returns
         -------
         Path
             Path to saved report.
         """
-        logger.info("Generating connectivity analysis report...")
+        # Convert single contrast to list
+        if isinstance(contrast_names, str):
+            contrast_names = [contrast_names]
+        
+        logger.info(f"Generating connectivity analysis report for {len(contrast_names)} contrast(s)...")
 
         # Initialize report
+        title = f"StatCraft Connectivity Analysis"
+        if len(contrast_names) == 1:
+            title = f"{title}: {contrast_names[0]}"
+        
         self.report = ReportGenerator(
-            title=f"StatCraft Connectivity Analysis: {contrast_name}",
+            title=title,
             output_dir=self.output_dir,
         )
 
@@ -3873,6 +3900,7 @@ class StatCraftPipeline:
             <p><strong>Number of ROIs:</strong> {self.connectivity_glm.n_rois}</p>
             <p><strong>Number of Edges:</strong> {self.connectivity_glm.n_edges}</p>
             <p><strong>Atlas:</strong> {self._connectivity_metadata.get('atlas_name', 'Not specified')}</p>
+            <p><strong>Contrasts:</strong> {', '.join(contrast_names)}</p>
             """,
             section_type="html",
             level=1,
@@ -3888,76 +3916,89 @@ class StatCraftPipeline:
                 level=2,
             )
 
-        # Add results for each correction
-        glm_result = self.connectivity_glm.results[contrast_name]
-        t_matrix_unthresholded = glm_result['maps']['t_matrix']
-        p_matrix = glm_result['maps']['p_matrix']
-        df = glm_result['df']
-
         if self.connectivity_inference is None:
             logger.error("Connectivity inference not initialized")
             raise RuntimeError("Connectivity inference not initialized")
 
-        for i, (correction, threshold) in enumerate(self.connectivity_inference.threshold_values.get(contrast_name, {}).items()):
-            edge_table = self.connectivity_inference.edge_tables.get(contrast_name, {}).get(correction)
-            # Get the thresholded matrix for this correction method
-            thresholded_dict = self.connectivity_inference.thresholded_matrices.get(contrast_name, {})
-            if correction in thresholded_dict:
-                t_matrix_thresholded = thresholded_dict[correction]
-            else:
-                t_matrix_thresholded = t_matrix_unthresholded
+        # Add results for each contrast
+        for contrast_name in contrast_names:
+            # Add contrast header if multiple contrasts
+            if len(contrast_names) > 1:
+                self.report.add_section(
+                    f"Contrast: {contrast_name}",
+                    "",
+                    section_type="html",
+                    level=2,
+                )
+            
+            glm_result = self.connectivity_glm.results[contrast_name]
+            t_matrix_unthresholded = glm_result['maps']['t_matrix']
+            p_matrix = glm_result['maps']['p_matrix']
+            df = glm_result['df']
 
-            # Debug: log matrix properties
-            n_nonzero = np.count_nonzero(t_matrix_thresholded)
-            nonzero_vals = t_matrix_thresholded[t_matrix_thresholded != 0]
-            if len(nonzero_vals) > 0:
-                logger.info(f"Report {correction}: {n_nonzero} non-zero edges, "
-                           f"range=[{nonzero_vals.min():.3f}, {nonzero_vals.max():.3f}]")
-            else:
-                logger.info(f"Report {correction}: 0 non-zero edges (all thresholded out)")
+            for i, (correction, threshold) in enumerate(self.connectivity_inference.threshold_values.get(contrast_name, {}).items()):
+                edge_table = self.connectivity_inference.edge_tables.get(contrast_name, {}).get(correction)
+                # Get the thresholded matrix for this correction method
+                thresholded_dict = self.connectivity_inference.thresholded_matrices.get(contrast_name, {})
+                if correction in thresholded_dict:
+                    t_matrix_thresholded = thresholded_dict[correction]
+                else:
+                    t_matrix_thresholded = t_matrix_unthresholded
 
-            coordinates = None
-            roi_names = None
-            atlas_name = None
-            if self._connectivity_metadata is not None:
-                coordinates = self._connectivity_metadata.get('roi_coordinates')
-                roi_names = self._connectivity_metadata.get('roi_names')
-                atlas_name = self._connectivity_metadata.get('atlas_name')
+                # Debug: log matrix properties
+                n_nonzero = np.count_nonzero(t_matrix_thresholded)
+                nonzero_vals = t_matrix_thresholded[t_matrix_thresholded != 0]
+                if len(nonzero_vals) > 0:
+                    logger.info(f"Report {correction}: {n_nonzero} non-zero edges, "
+                               f"range=[{nonzero_vals.min():.3f}, {nonzero_vals.max():.3f}]")
+                else:
+                    logger.info(f"Report {correction}: 0 non-zero edges (all thresholded out)")
 
-            # Pass unthresholded matrix only for the first correction to avoid redundancy
-            unthresholded_for_display = t_matrix_unthresholded if i == 0 else None
+                coordinates = None
+                roi_names = None
+                atlas_name = None
+                if self._connectivity_metadata is not None:
+                    coordinates = self._connectivity_metadata.get('roi_coordinates')
+                    roi_names = self._connectivity_metadata.get('roi_names')
+                    atlas_name = self._connectivity_metadata.get('atlas_name')
 
-            self.report.add_connectivity_results_section(
-                t_matrix=t_matrix_thresholded,
-                p_matrix=p_matrix,
-                contrast_name=contrast_name,
-                correction=correction,
-                threshold=threshold,
-                coordinates=coordinates,
-                roi_names=roi_names,
-                atlas_name=atlas_name,
-                edge_table=edge_table,
-                df=df,
-                t_matrix_unthresholded=unthresholded_for_display,
-            )
+                # Pass unthresholded matrix only for the first correction to avoid redundancy
+                unthresholded_for_display = t_matrix_unthresholded if i == 0 else None
 
-            # Add permutation null distribution plot if available
-            if correction == "fwer_perm":
-                null_dist = self.connectivity_inference.null_distributions.get(contrast_name, {}).get(correction)
-                if null_dist is not None:
-                    n_perm = len(null_dist)
-                    alpha = self.config.get("alpha_corrected", 0.05)
-                    self.report.add_permutation_null_distribution(
-                        h0_distribution=null_dist,
-                        alpha=alpha,
-                        contrast_name=contrast_name,
-                        n_perm=n_perm,
-                    )
-                    logger.info(f"Added null distribution plot for {contrast_name} (FWER permutation)")
+                self.report.add_connectivity_results_section(
+                    t_matrix=t_matrix_thresholded,
+                    p_matrix=p_matrix,
+                    contrast_name=contrast_name,
+                    correction=correction,
+                    threshold=threshold,
+                    coordinates=coordinates,
+                    roi_names=roi_names,
+                    atlas_name=atlas_name,
+                    edge_table=edge_table,
+                    df=df,
+                    t_matrix_unthresholded=unthresholded_for_display,
+                )
+
+                # Add permutation null distribution plot if available
+                if correction == "fwer_perm":
+                    null_dist = self.connectivity_inference.null_distributions.get(contrast_name, {}).get(correction)
+                    if null_dist is not None:
+                        n_perm = len(null_dist)
+                        alpha = self.config.get("alpha_corrected", 0.05)
+                        self.report.add_permutation_null_distribution(
+                            h0_distribution=null_dist,
+                            alpha=alpha,
+                            contrast_name=contrast_name,
+                            n_perm=n_perm,
+                        )
+                        logger.info(f"Added null distribution plot for {contrast_name} (FWER permutation)")
 
         # Save report with BIDS-compatible naming
         bids_prefix = self._generate_bids_prefix()
-        report_filename = f"{bids_prefix}_contrast-{contrast_name}_report.html"
+        if len(contrast_names) == 1:
+            report_filename = f"{bids_prefix}_contrast-{contrast_names[0]}_report.html"
+        else:
+            report_filename = f"{bids_prefix}_report.html"
         report_path = self.report.save(report_filename)
         logger.info(f"Report saved to: {report_path}")
 

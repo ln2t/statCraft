@@ -54,7 +54,7 @@ DEFAULT_CONFIG = {
 
     # Paired test settings
     "paired_test": {
-        "pair_by": None,  # e.g., "session"
+        "pair_by": None,  # BIDS entity for pairing (default: "sub" for subject). Supports abbreviations (sub, ses, run, etc.) or full names.
         "condition1": None,  # e.g., "pre"
         "condition2": None,  # e.g., "post"
         "sample_patterns": None,  # e.g., {"GS": "*GS*cvr*.nii.gz", "SSS": "*SSS*cvr*.nii.gz"}
@@ -228,8 +228,9 @@ class Config:
         # Validate paired test settings
         if self.data["analysis_type"] == "paired":
             paired = self.data["paired_test"]
-            if not paired.get("pair_by"):
-                errors.append("paired_test.pair_by is required for paired analysis")
+            # pair_by is optional, defaults to "sub" (subject)
+            # if not paired.get("pair_by"):
+            #     errors.append("paired_test.pair_by is required for paired analysis")
 
             # Check if using old method (condition1/condition2) or new method (sample_patterns)
             has_sample_patterns = paired.get("sample_patterns") is not None
@@ -409,7 +410,7 @@ def create_default_config(output_path: Union[str, Path]) -> Path:
 #   OR
 #   statcraft /path/to/dataset /path/to/output -d /path/to/derivatives --config this_file.yaml
 #
-# For more information, visit: https://github.com/arovai/StatCraft
+# For more information, visit: https://github.com/ln2t/StatCraft
 # ===============================================================================
 
 # -------------------------------------------------------------------------------
@@ -594,11 +595,22 @@ group_comparison:
 # -------------------------------------------------------------------------------
 # Configuration for paired/within-subject comparisons
 paired_test:
-  # Column name that defines how to pair observations
+  # BIDS entity key for pairing observations (OPTIONAL, default: "sub")
   # CLI equivalent: --pair-by
-  # Common values: "sub" (pair by subject), "session" (pair by session)
+  # 
+  # Specifies which BIDS entity to use for pairing observations between conditions.
+  # Supports both BIDS abbreviations and full names:
+  #   - "sub" or "subject" (default): Pair observations with same subject
+  #   - "ses" or "session": Pair observations with same session
+  #   - "run": Pair observations with same run number
+  #   - "task": Pair observations with same task
+  #   - Any other BIDS entity (e.g., "acq", "desc", etc.)
+  #
+  # Files must contain BIDS-like key-value pairs in the filename
+  # (e.g., sub-001_ses-pre_*.nii.gz) for pairing to work.
+  #
   # Example: pair_by: sub
-  # Each unique value in this column represents one paired unit
+  # If null, defaults to "sub" (subject)
   pair_by: null
 
   # METHOD 1: Using conditions (legacy approach)

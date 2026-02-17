@@ -1598,7 +1598,15 @@ class ConnectivityInference:
         
         data_dir.mkdir(parents=True, exist_ok=True)
         tables_dir.mkdir(parents=True, exist_ok=True)
-        null_dist_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Check if there are any non-empty null distributions
+        has_null_dists = any(
+            null_dist is not None and len(null_dist) > 0
+            for corrections in self.null_distributions.values()
+            for null_dist in corrections.values()
+        )
+        if has_null_dists:
+            null_dist_dir.mkdir(parents=True, exist_ok=True)
         
         saved_files = {}
         

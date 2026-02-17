@@ -14,9 +14,19 @@ file_pattern: "**/*task-nback*space-MNI*stat-effect*.nii.gz"
 # Paired test settings
 # Defines how to pair images from different conditions
 paired_test:
-  pair_by: session    # Entity to pair by (session, task, run, etc.)
+  pair_by: sub        # BIDS entity to pair by: "sub" (subject, default), "ses" (session), "run", etc.
   condition1: pre     # First condition (e.g., baseline, session-1)
   condition2: post    # Second condition (e.g., treatment, session-2)
+
+# NOTES on pair_by:
+# - "sub" (default): Pairs observations with the same subject ID
+# - "ses": Pairs observations with the same session (useful if you want to compare 
+#          how conditions differ within each session)
+# - "run": Pairs observations with the same run number
+# - Any other BIDS entity abbreviation or full name works too
+#
+# Files must contain BIDS-like key-value pairs in the filename
+# (e.g., sub-001_ses-pre_*.nii.gz) for pairing to work
 
 # Statistical inference settings
 inference:

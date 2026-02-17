@@ -10,7 +10,7 @@ import logging
 import sys
 import textwrap
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from statcraft import __version__
 from statcraft.config import Config, create_default_config
@@ -81,137 +81,75 @@ def create_parser() -> argparse.ArgumentParser:
 
     epilog = textwrap.dedent(f"""
     {Colors.BOLD}{Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
-    {Colors.BOLD}USAGE PATTERNS{Colors.END}
-    {Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
-
-    {Colors.BOLD}Pattern 1: Dataset with Separate Derivatives (Recommended){Colors.END}
-      {Colors.YELLOW}statcraft <INPUT_DIR> <OUTPUT_DIR> group --derivatives <DERIVATIVES_PATH> [options]{Colors.END}
-      Use when you have a dataset root and processed derivatives (e.g., fMRIPrep output).
-      This ensures proper metadata handling from participants.tsv.
-
-    {Colors.BOLD}Pattern 2: Derivatives-Only Directory{Colors.END}
-      {Colors.YELLOW}statcraft <DERIVATIVES_PATH> <OUTPUT_DIR> group [--participants-file <PATH>] [options]{Colors.END}
-      Use when analyzing data directly from a derivatives folder.
-      Optionally specify --participants-file if it's not in the derivatives folder.
-
-    {Colors.BOLD}File Discovery:{Colors.END}
-      All file discovery uses glob patterns with the --pattern argument.
-      Include task, session, space, and other filters directly in your pattern:
-        {Colors.CYAN}--pattern '*task-rest*ses-01*space-MNI152*stat-effect*.nii.gz'{Colors.END}
-
-    {Colors.BOLD}{Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
     {Colors.BOLD}EXAMPLES{Colors.END}
     {Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
 
-    {Colors.BOLD}Configuration File:{Colors.END}
+    {Colors.BOLD}Generate Default Configuration:{Colors.END}
 
-      {Colors.YELLOW}# Generate default configuration{Colors.END}
-      statcraft --init-config config.yaml
+      {Colors.YELLOW}statcraft --init-config config.yaml{Colors.END}
 
-      {Colors.YELLOW}# Run analysis with config file{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --config config.yaml
+    {Colors.BOLD}One-Sample T-Tests:{Colors.END}
 
-    {Colors.BOLD}One-Sample Tests (Pattern 1: Dataset + Derivatives):{Colors.END}
+      {Colors.YELLOW}# Simple one-sample t-test on motor task maps{Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type one-sample \\
+          --pattern "*task-motor*beta1*.nii.gz"
 
-      {Colors.YELLOW}# Process all subjects with specific pattern{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --analysis-type one-sample \\
-          --pattern '*task-rest*space-MNI152*stat-effect*.nii.gz'
+    {Colors.BOLD}Two-Sample T-Tests (Group Comparisons):{Colors.END}
 
-      {Colors.YELLOW}# Use CVR maps with wildcards{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/cvrmap --analysis-type one-sample \\
-          --pattern '**/*GS*cvr*.nii.gz'
+      {Colors.YELLOW}# Compare controls vs patients using distinguishable names{Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type two-sample \\
+          --patterns "controls=sub-c*.nii.gz patients=sub-p*.nii.gz"
 
-      {Colors.YELLOW}# Exclude specific images from analysis{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --analysis-type one-sample \\
-          --pattern '*cvr*.nii.gz' --exclude '*label-bad*'
+    {Colors.BOLD}Paired T-Tests (Within-Subject Comparisons):{Colors.END}
 
-    {Colors.BOLD}One-Sample Tests (Pattern 2: Derivatives-Only):{Colors.END}
+      {Colors.YELLOW}# Compare session 1 to session 2, paired by subject (default pairing){Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type paired \\
+          --patterns "session1=*ses-1*.nii.gz session2=*ses-2*.nii.gz"
 
-      {Colors.YELLOW}# Direct derivatives analysis (if has participants.tsv){Colors.END}
-      statcraft /data/derivatives/fmriprep /data/output group \\
-          --analysis-type one-sample --pattern '*stat-effect*.nii.gz'
-
-      {Colors.YELLOW}# With explicit participants file{Colors.END}
-      statcraft /data/derivatives/fmriprep /data/output group \\
-          --participants-file /data/rawdata/participants.tsv \\
-          --analysis-type one-sample --pattern '*stat-effect*.nii.gz'
-
-      {Colors.YELLOW}# Derivatives-only with pattern{Colors.END}
-      statcraft /data/derivatives/fmriprep /data/output group \
-          --analysis-type one-sample --pattern '*cvr*.nii.gz'
-
-    {Colors.BOLD}Group Comparisons (Two-Sample):{Colors.END}
-
-      {Colors.YELLOW}# Using group column in participants.tsv{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --analysis-type two-sample \\
-          --group-column group --pattern '*stat-effect*.nii.gz'
-
-      {Colors.YELLOW}# Using sample-specific patterns{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/cvrmap --analysis-type two-sample \
-          --patterns 'GS=**/*GS*cvr*.nii.gz SSS=**/*SSS*cvr*.nii.gz' --contrast 'GS-SSS'
-
-    {Colors.BOLD}Paired Comparisons:{Colors.END}
-
-      {Colors.YELLOW}# Within-subject pairing by subject ID with patterns{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --analysis-type paired --pair-by sub \
-          --patterns 'pre=*ses-pre*.nii.gz post=*ses-post*.nii.gz' --contrast 'post-pre'
+      {Colors.YELLOW}# Pair by session instead of subject{Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type paired \\
+          --patterns "pre=*ses-pre*.nii.gz post=*ses-post*.nii.gz" \\
+          --pair-by "ses"
 
     {Colors.BOLD}General Linear Model (GLM):{Colors.END}
 
-      {Colors.YELLOW}# Age effect on connectivity (age is continuous, z-scored){Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives --data-type connectivity \
-          --analysis-type glm --regressors age --contrast age --pattern '**/*_connmat.npy'
+      {Colors.YELLOW}# GLM with all columns from participants.tsv (default behavior){Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type glm \\
+          --participants-file /path/to/participants.tsv \\
+          --categorical-regressors sex group \\
+          --pattern "*stat-effect*.nii.gz"
 
-      {Colors.YELLOW}# Sex effect (categorical) controlling for age (continuous){Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --analysis-type glm \
-          --regressors age sex --categorical-regressors sex --contrast 'M-F' \\
-          --pattern '*stat-effect*.nii.gz'
+      {Colors.YELLOW}# GLM with specific regressors and multiple contrasts{Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type glm \\
+          --participants-file /path/to/participants.tsv \\
+          --regressors age IQ \\
+          --categorical-regressors sex \\
+          --contrasts age M-F "0.5*M+0.5*F-mean" \\
+          --pattern "*stat-effect*.nii.gz"
 
-      {Colors.YELLOW}# Keep age in original units (no z-scoring){Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --analysis-type glm \\
-          --regressors age sex --no-standardize-regressors age \\
-          --categorical-regressors sex --contrast 'M-F' --pattern '*stat-effect*.nii.gz'
-
-    {Colors.BOLD}Participant Filtering:{Colors.END}
-
-      {Colors.YELLOW}# Process specific participants{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --analysis-type one-sample \\
-          --participant-label 01 02 03 --pattern '*stat-effect*.nii.gz'
-
-      {Colors.YELLOW}# Process all participants with pattern{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --analysis-type one-sample \\
-          --pattern '*task-rest*ses-01*.nii.gz'
-
-    {Colors.BOLD}Advanced Options:{Colors.END}
-
-      {Colors.YELLOW}# Enable permutation testing{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --analysis-type one-sample \\
-          --pattern '*stat-effect*.nii.gz' --permutation
-
-      {Colors.YELLOW}# Custom atlas and cluster analysis{Colors.END}
-      statcraft /data/dataset /data/output group \\
-          --derivatives /data/derivatives/fmriprep --analysis-type one-sample \\
-          --pattern '*stat-effect*.nii.gz' --atlas aal --extra-cluster-analysis
+      {Colors.YELLOW}# GLM with no intercept and selective z-scoring{Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type glm \\
+          --participants-file /path/to/participants.tsv \\
+          --regressors sex age IQ \\
+          --categorical-regressors sex \\
+          --no-standardize-regressors age \\
+          --no-intercept \\
+          --contrasts age M-F \\
+          --pattern "*stat-effect*.nii.gz"
 
     {Colors.BOLD}{Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
     {Colors.BOLD}MORE INFORMATION{Colors.END}
-    {Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
+    {Colors.GREEN}═════════════════════════════════════════════════════════════════════════════════{Colors.END}
 
-      Documentation:  https://github.com/arovai/StatCraft
-      Report Issues:  https://github.com/arovai/StatCraft/issues
+    Documentation:  https://github.com/ln2t/StatCraft
+    Report Issues:  https://github.com/ln2t/StatCraft/issues
       Version:        {__version__}
     """)
 
@@ -367,10 +305,14 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     analysis.add_argument(
-        "--contrast", "-C",
+        "--contrasts", "-C",
         metavar="EXPR",
-        help="Contrast expression for the analysis. For GLM: use design matrix column names (e.g., 'age', 'sex_M-sex_F') "
-             "or original categorical values (e.g., 'M-F'). For comparisons with patterns: use sample names (e.g., 'GS-SSS').",
+        nargs='+',
+        help="Contrast expression(s) for the analysis. Can specify multiple contrasts separated by spaces. "
+             "For GLM: use design matrix column names (e.g., 'age', 'sex_M-sex_F'), "
+             "original categorical values (e.g., 'M-F'), or 'mean' to refer to the intercept. "
+             "Examples: --contrasts age M-F '0.5*M+0.5*F-mean'. "
+             "For comparisons with patterns: use sample names (e.g., 'GS-SSS').",
     )
 
     # =========================================================================
@@ -415,7 +357,8 @@ def create_parser() -> argparse.ArgumentParser:
         metavar="COLUMN",
         nargs='+',
         help="Regressor column names from participants.tsv (e.g., age sex IQ). "
-             "All regressors are treated as continuous by default and z-scored. "
+             "If not specified, ALL columns from participants.tsv are used by default. "
+             "All regressors are treated as continuous and z-scored by default. "
              "Use --categorical-regressors to treat specific columns as categorical (dummy-coded).",
     )
 
@@ -425,8 +368,8 @@ def create_parser() -> argparse.ArgumentParser:
         nargs='+',
         dest="categorical_regressors",
         help="Columns to treat as categorical (dummy-coded) in GLM. "
-             "Use for columns with non-numerical values (e.g., sex with M/F, treatment with control/drug) "
-             "or to override the default continuous treatment.",
+             "Can include columns NOT specified in --regressors (they will be fetched from participants.tsv). "
+             "Use for columns with non-numerical values (e.g., sex with M/F, treatment with control/drug).",
     )
 
     design.add_argument(
@@ -436,6 +379,13 @@ def create_parser() -> argparse.ArgumentParser:
         dest="no_standardize_regressors",
         help="Regressor column names to keep in original units (skip z-scoring). "
              "Useful for interpretability when coefficients need original scale (e.g., age IQ).",
+    )
+
+    design.add_argument(
+        "--no-intercept",
+        action="store_true",
+        dest="no_intercept",
+        help="Exclude the intercept from the design matrix. By default, an intercept is included.",
     )
 
     # =========================================================================
@@ -448,9 +398,13 @@ def create_parser() -> argparse.ArgumentParser:
 
     paired.add_argument(
         "--pair-by",
-        metavar="COLUMN",
+        metavar="ENTITY",
         dest="pair_by",
-        help="Column name for pairing subjects in paired t-test.",
+        default=None,
+        help="BIDS entity key for pairing observations (default: 'sub' for subject). "
+             "Supports BIDS abbreviations ('sub', 'ses', 'run', etc.) or full names. "
+             "Examples: --pair-by sub, --pair-by ses, --pair-by run. "
+             "Data filenames must contain matching entity values (e.g., '*ses-pre*').",
     )
 
     paired.add_argument(
@@ -783,32 +737,57 @@ def main():
 
     if args.analysis_type:
         config_overrides["analysis_type"] = args.analysis_type
-    if args.contrast:
-        config_overrides["contrast"] = args.contrast
+    if args.contrasts:
+        config_overrides["contrasts"] = list(args.contrasts)
 
     # Participant filter
     if args.participant_label:
         config_overrides["participant_label"] = list(args.participant_label)
     
-    # Design matrix with regressors (for GLM)
+    # Design matrix configuration (for GLM)
+    # Default: use all columns from participants.tsv if --regressors not specified
+    # If --regressors specified: use only those columns
+    # --categorical-regressors can specify columns not in --regressors (will be add them)
+    design_matrix_config: Dict[str, Any] = {
+        "add_intercept": not args.no_intercept,
+        "standardize_continuous": True,
+    }
+    
     if args.regressors:
-        config_overrides["design_matrix"] = {
-            "columns": list(args.regressors),
-            "add_intercept": True,
-            "standardize_continuous": True,
-        }
+        # User specified columns - use these plus any additional categorical regressors
+        columns = list(args.regressors)
+        # Add categorical regressors not already in the list
         if args.categorical_regressors:
-            config_overrides["design_matrix"]["categorical_columns"] = list(args.categorical_regressors)
+            for cat_col in args.categorical_regressors:
+                if cat_col not in columns:
+                    columns.append(cat_col)
+        design_matrix_config["columns"] = columns
+    else:
+        # No --regressors specified: use "all" as a flag to use all participants.tsv columns
+        design_matrix_config["columns"] = "all"
+    
+    if args.categorical_regressors:
+        design_matrix_config["categorical_columns"] = list(args.categorical_regressors)
+    if args.no_standardize_regressors:
+        design_matrix_config["no_standardize_columns"] = list(args.no_standardize_regressors)
+    
+    config_overrides["design_matrix"] = design_matrix_config
+    
+    if args.verbose > 0:
+        print(f"Design matrix configuration:")
+        columns_cfg = design_matrix_config.get("columns")
+        if columns_cfg == "all":
+            print(f"  Regressors: ALL columns from participants.tsv")
+        elif isinstance(columns_cfg, list):
+            print(f"  Regressors: {', '.join(columns_cfg)}")
+        if args.categorical_regressors:
+            print(f"  Categorical regressors (dummy-coded): {', '.join(args.categorical_regressors)}")
         if args.no_standardize_regressors:
-            config_overrides["design_matrix"]["no_standardize_columns"] = list(args.no_standardize_regressors)
-        
-        if args.verbose > 0:
-            print(f"Design matrix configuration:")
-            print(f"  Regressors (continuous): {', '.join(args.regressors)}")
-            if args.categorical_regressors:
-                print(f"  Categorical regressors: {', '.join(args.categorical_regressors)}")
-            if args.no_standardize_regressors:
-                print(f"  No z-scoring applied to: {', '.join(args.no_standardize_regressors)}")
+            print(f"  No z-scoring applied to: {', '.join(args.no_standardize_regressors)}")
+        if args.no_intercept:
+            print(f"  Intercept: excluded (--no-intercept)")
+        else:
+            print(f"  Intercept: included")
     
     # Paired test
     if args.pair_by:
