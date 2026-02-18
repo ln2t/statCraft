@@ -32,6 +32,65 @@ class Colors:
     END = '\033[0m'
 
 
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter with colors for different log levels."""
+
+    COLORS = {
+        'DEBUG': '\033[94m',      # Blue
+        'INFO': '\033[92m',       # Green
+        'WARNING': '\033[93m',    # Yellow
+        'ERROR': '\033[91m',      # Red
+        'CRITICAL': '\033[91m\033[1m',  # Red + Bold
+    }
+
+    RESET = '\033[0m'
+
+    def format(self, record):
+        """Format log record with color."""
+        original_levelname = record.levelname
+        color = self.COLORS.get(record.levelname, '')
+        record.levelname = f"{color}{record.levelname}{self.RESET}"
+        result = super().format(record)
+        record.levelname = original_levelname
+        return result
+
+
+def setup_logging(verbose: bool = False, log_file: Optional[str] = None) -> logging.Logger:
+    """Configure logging with color support.
+
+    Args:
+        verbose: If True, set log level to DEBUG, otherwise INFO
+        log_file: Optional path to log file
+
+    Returns:
+        Configured logger instance
+    """
+    level = logging.DEBUG if verbose else logging.INFO
+
+    logger = logging.getLogger('statcraft')
+    logger.setLevel(level)
+    logger.handlers.clear()
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(level)
+    formatter = ColoredFormatter('%(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(level)
+        plain_formatter = logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        file_handler.setFormatter(plain_formatter)
+        logger.addHandler(file_handler)
+
+    logger.propagate = False
+    return logger
+
+
 class ColoredHelpFormatter(argparse.RawDescriptionHelpFormatter):
     """Custom formatter with colored section headers."""
 
@@ -94,7 +153,11 @@ def create_parser() -> argparse.ArgumentParser:
       statcraft /path/to/first_level /path/to/output group \\
           --analysis-type one-sample \\
           --pattern "*task-motor*beta1*.nii.gz"
-
+      {Colors.YELLOW}# One-sample t-test with spatial smoothing (FWHM in mm){Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type one-sample \\
+          --pattern "*task-motor*beta1*.nii.gz" \\
+          --smoothing 6
     {Colors.BOLD}Two-Sample T-Tests (Group Comparisons):{Colors.END}
 
       {Colors.YELLOW}# Compare controls vs patients using distinguishable names{Colors.END}
@@ -528,22 +591,15 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     processing.add_argument(
-        "--smoothing-fwhm",
+        "--smoothing",
         metavar="MM",
         type=float,
-        default=5.0,
+        default=0,
         dest="smoothing_fwhm",
-        help="Smoothing kernel FWHM in mm for second-level GLM. Set to 0 to disable (default: 5.0).",
+        help="Smoothing kernel FWHM in mm for brain map analysis. "
+             "Smoothing strength in mm for second-level analysis of brain maps (not applicable to connectivity matrices). "
+             "Use 0 for no smoothing (default: 0).",
     )
-
-    processing.add_argument(
-        "--no-report",
-        action="store_true",
-        dest="no_report",
-        help="Disable HTML report generation.",
-    )
-
-
 
     # =========================================================================
     # CLUSTER ANALYSIS OPTIONS
@@ -622,11 +678,7 @@ def main():
         return
     
     # Set up logging
-    log_level = logging.WARNING - (args.verbose * 10)
-    logging.basicConfig(
-        level=max(log_level, logging.DEBUG),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    setup_logging(verbose=args.verbose > 0)
     
     print(f"{Colors.BOLD}{Colors.GREEN}StatCraft v{__version__}{Colors.END}")
     print("=" * 40)
@@ -837,7 +889,7 @@ def main():
 
     # Output settings
     config_overrides["output"] = {
-        "generate_report": not args.no_report,
+        "generate_report": True,
         "save_supplementary_data": args.save_supplementary_data,
     }
 

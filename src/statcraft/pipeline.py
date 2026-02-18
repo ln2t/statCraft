@@ -691,7 +691,7 @@ class StatCraftPipeline:
         # Create GLM
         # Use smoothing_fwhm from parameter, or fall back to config value
         if smoothing_fwhm is None:
-            smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 5.0)
+            smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 0)
 
         self.glm = SecondLevelGLM(
             mask=mask,
@@ -1036,7 +1036,7 @@ class StatCraftPipeline:
 
         # Get preprocessing parameters
         glm_config = self.config.get("glm", {})
-        smoothing_fwhm = glm_config.get("smoothing_fwhm", 5.0)
+        smoothing_fwhm = glm_config.get("smoothing_fwhm", 0)
         zscore_applied = bool(self.config.get("zscore", False))
         scaling_applied = self.config.get("scaling_pattern", None)
         if scaling_applied and self.config.get("scaling_key"):
@@ -1637,15 +1637,11 @@ class StatCraftPipeline:
         if config_dict.get('cluster_overlap_threshold') is not None and config_dict['cluster_overlap_threshold'] != 5.0:
             cmd_parts.append(f"--cluster-overlap-threshold {config_dict['cluster_overlap_threshold']}")
 
-        # Add verbosity
+        # Verbosity is always added if needed
         if config_dict.get('verbose'):
             verbose_level = config_dict['verbose']
             if verbose_level > 0:
                 cmd_parts.append('-' + 'v' * verbose_level)
-
-        # Add report flag
-        if config_dict.get('output', {}).get('generate_report') is False:
-            cmd_parts.append("--no-report")
 
         return ' '.join(cmd_parts)
 
@@ -3176,7 +3172,7 @@ class StatCraftPipeline:
 
         # Run one-sample t-test
         # Get smoothing_fwhm from config
-        smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 5.0)
+        smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 0)
         self.glm = SecondLevelGLM(smoothing_fwhm=smoothing_fwhm)
         results = self.glm.one_sample_ttest(diff_images, contrast_name=contrast_name)
 
@@ -3365,7 +3361,7 @@ class StatCraftPipeline:
         # Fit GLM
         logger.info("Fitting GLM...")
         # Get smoothing_fwhm from config
-        smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 5.0)
+        smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 0)
         self.glm = SecondLevelGLM(smoothing_fwhm=smoothing_fwhm)
         self.glm.fit(self._image_paths, self._design_matrix)
 

@@ -64,6 +64,8 @@ pip install -e .
 
 StatCraft uses flexible pattern matching for file discovery. The idea is that you point to one or more directories and define filenaming patterns using wildcards, and this defines the data on which the second-level analysis will be performed.
 
+This allows the user to use this tool in a variety of first-level tools without any particular constraints on the output structure.
+
 Here are the typical usage, depending on the analysis type:
 
 **One-sample t-tests**
@@ -78,6 +80,26 @@ The pipeline will search for files matching `PATTERN` in the `<INPUT_DIR>` (expl
 A one-sample t-test on maps from first-level `beta1` maps with `task-motor` in the name:
 ```bash
 statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type one-sample --pattern "*task-motor*beta1*.nii.gz"
+```
+
+**Smoothing Brain Map Data**
+
+When analyzing brain maps (e.g., statistical maps from first-level analyses), spatial smoothing can improve signal-to-noise ratio and increase statistical power. Use the `--smoothing` option to specify the smoothing strength in mm (FWHM - Full Width at Half Maximum):
+
+```bash
+statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type one-sample --pattern "PATTERN" --smoothing 6
+```
+
+The `--smoothing` parameter:
+- Accepts values in mm (e.g., 4, 6, 8)
+- Default is 0 (no smoothing)
+- Only applies to brain map analysis (NIfTI images), not connectivity matrices
+- Uses spatial Gaussian smoothing via nilearn's `SecondLevelModel`
+
+*Example with smoothing:*
+
+```bash
+statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type one-sample --pattern "*task-motor*beta1*.nii.gz" --smoothing 6
 ```
 
 **Two-sample t-tests**
@@ -202,6 +224,11 @@ inference:
 
 # Atlas for cluster annotation
 atlas: harvard_oxford
+
+# Smoothing for brain map analysis (in mm FWHM)
+# Use 0 for no smoothing (default)
+# Only applies to brain map analysis, not connectivity matrices
+smoothing_fwhm: 0
 
 # Output settings
 output:

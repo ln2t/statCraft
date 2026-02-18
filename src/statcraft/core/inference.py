@@ -1447,6 +1447,7 @@ class ConnectivityInference:
         target_vars = connectivity_data
         
         logger.info(f"  Running {n_perm} permutations...")
+        print(f"\n>>> Performing permutation testing ({n_perm} permutations). This may take a while...")
         
         # Run permuted_ols with dict output to get null distribution
         try:
@@ -1459,7 +1460,7 @@ class ConnectivityInference:
                 two_sided_test=self.two_sided,
                 random_state=random_state,
                 n_jobs=n_jobs,
-                verbose=1 if logger.level <= 20 else 0,  # verbose if INFO or lower
+                verbose=0,  # suppress nilearn's verbose output
                 output_type='dict',
             )
         except Exception as e:

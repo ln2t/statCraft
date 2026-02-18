@@ -441,7 +441,7 @@ class ReportGenerator:
         html += f"""
         <h3>Preprocessing Parameters</h3>
         <ul>
-            <li><strong>Smoothing FWHM:</strong> {smoothing_fwhm if smoothing_fwhm else 'None'} mm</li>
+            <li><strong>Smoothing FWHM:</strong> {smoothing_fwhm if smoothing_fwhm is not None else 'None'} mm</li>
             <li><strong>Z-scoring:</strong> {'Yes' if zscore else 'No'}</li>
             <li><strong>Scaling:</strong> {scaling if scaling else 'None'}</li>
         </ul>

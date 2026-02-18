@@ -88,7 +88,7 @@ DEFAULT_CONFIG = {
 
     # GLM settings
     "glm": {
-        "smoothing_fwhm": 5.0,  # Smoothing kernel FWHM in mm (set to None to disable)
+        "smoothing_fwhm": 0,  # Smoothing kernel FWHM in mm (set to 0 or None to disable)
     },
 
     # Atlas for cluster annotation
@@ -763,7 +763,7 @@ output:
   save_tables: true
 
   # Generate HTML report with visualizations
-  # CLI equivalent: --no-report (flag to disable)
+  # CLI equivalent: Always enabled (no flag to disable)
   # Report includes glass brain plots, cluster tables, and analysis summary
   generate_report: true
 
