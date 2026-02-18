@@ -32,7 +32,8 @@ class DataLoader:
     Parameters
     ----------
     bids_dir : str or Path
-        Path to the dataset root directory (must contain participants.tsv or use participants_file).
+        Path to the dataset root directory. Only needs to contain participants.tsv
+        for GLM and two-sample analyses.
     derivatives : list of str or Path
         List of paths to derivative folders containing images to analyze.
     output_dir : str or Path
@@ -40,7 +41,11 @@ class DataLoader:
     participants_file : str or Path, optional
         Path to a custom participants.tsv file. If not provided, will look for
         participants.tsv in bids_dir. Useful when bids_dir is directly a
-        derivatives folder without participants.tsv.
+        derivatives folder without participants.tsv. Only required for GLM and
+        two-sample analyses.
+    analysis_type : str, optional
+        Type of analysis: 'one-sample', 'two-sample', 'paired', or 'glm'.
+        Default is 'glm'. Only 'glm' and 'two-sample' require participants.tsv.
     
     Attributes
     ----------
@@ -52,10 +57,12 @@ class DataLoader:
         Output directory for results.
     participants_file : Path or None
         Path to custom participants file if provided.
+    analysis_type : str
+        Type of analysis being performed.
     layout : BIDSLayout
         PyBIDS layout object for data discovery.
-    participants : pd.DataFrame
-        Participants metadata from participants.tsv.
+    participants : pd.DataFrame or None
+        Participants metadata from participants.tsv, or None if not required/available.
     """
     
     def __init__(
@@ -64,11 +71,13 @@ class DataLoader:
         derivatives: List[Union[str, Path]],
         output_dir: Union[str, Path],
         participants_file: Optional[Union[str, Path]] = None,
+        analysis_type: str = "glm",
     ):
         self.bids_dir = Path(bids_dir)
         self.derivatives = [Path(d) for d in derivatives]
         self.output_dir = Path(output_dir)
         self.participants_file = Path(participants_file) if participants_file else None
+        self.analysis_type = analysis_type
         
         # Validate paths
         self._validate_paths()
@@ -76,33 +85,45 @@ class DataLoader:
         # Initialize BIDS layout
         self.layout = self._init_bids_layout()
         
-        # Load participants metadata
+        # Load participants metadata (only if required by analysis type)
         self.participants = self._load_participants()
         
         # Cache for loaded images (NIfTI) and matrices (numpy)
         self._image_cache: Dict[str, Union[nib.Nifti1Image, np.ndarray]] = {}
         
         logger.info(f"DataLoader initialized with BIDS dir: {self.bids_dir}")
-        logger.info(f"Found {len(self.participants)} participants")
+        if self.participants is not None:
+            logger.info(f"Found {len(self.participants)} participants")
+        else:
+            logger.info("No participants file loaded (not required for this analysis type)")
     
     def _validate_paths(self) -> None:
         """Validate that required paths exist."""
         if not self.bids_dir.exists():
             raise FileNotFoundError(f"Dataset directory not found: {self.bids_dir}")
         
-        # Check for participants.tsv in bids_dir or use provided participants_file
-        if self.participants_file:
-            if not self.participants_file.exists():
-                raise FileNotFoundError(
-                    f"Participants file not found: {self.participants_file}"
-                )
+        # Check if participants.tsv is required for this analysis type
+        requires_participants = self.analysis_type in ["glm", "two-sample", "two_sample"]
+        
+        if requires_participants:
+            # Check for participants.tsv in bids_dir or use provided participants_file
+            if self.participants_file:
+                if not self.participants_file.exists():
+                    raise FileNotFoundError(
+                        f"Participants file not found: {self.participants_file}"
+                    )
+            else:
+                participants_file = self.bids_dir / "participants.tsv"
+                if not participants_file.exists():
+                    raise FileNotFoundError(
+                        f"participants.tsv not found in directory: {participants_file}. "
+                        f"Use --participants-file to provide an alternative location."
+                    )
         else:
+            # For one-sample and paired analyses, participants.tsv is optional
             participants_file = self.bids_dir / "participants.tsv"
-            if not participants_file.exists():
-                raise FileNotFoundError(
-                    f"participants.tsv not found in directory: {participants_file}. "
-                    f"Use --participants-file to provide an alternative location."
-                )
+            if not self.participants_file and participants_file.exists():
+                logger.debug("Found participants.tsv in BIDS dir (optional for this analysis type)")
         
         for deriv_path in self.derivatives:
             if not deriv_path.exists():
@@ -154,13 +175,24 @@ class DataLoader:
             layout = BIDSLayout(self.bids_dir, validate=False)
             return layout
     
-    def _load_participants(self) -> pd.DataFrame:
-        """Load and validate participants.tsv."""
-        # Use provided participants_file or look in BIDS dir
+    def _load_participants(self) -> Optional[pd.DataFrame]:
+        """Load and validate participants.tsv if required."""
+        # Check if participants.tsv is required for this analysis type
+        requires_participants = self.analysis_type in ["glm", "two-sample", "two_sample"]
+        
+        # Try to find participants file
         if self.participants_file:
             participants_file = self.participants_file
         else:
             participants_file = self.bids_dir / "participants.tsv"
+        
+        # If file doesn't exist and it's not required, return None
+        if not participants_file.exists():
+            if not requires_participants:
+                logger.debug(f"No participants.tsv found for {self.analysis_type} analysis (not required)")
+                return None
+            # If required and doesn't exist, error is raised in _validate_paths
+            return None
         
         df = pd.read_csv(participants_file, sep="\t")
         

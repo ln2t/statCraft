@@ -41,8 +41,8 @@ class DesignMatrixBuilder:
         Format: {original_value: dummy_column_name}
     """
     
-    def __init__(self, participants: pd.DataFrame):
-        self.participants = participants.copy()
+    def __init__(self, participants: Optional[pd.DataFrame] = None):
+        self.participants = participants.copy() if participants is not None else None
         self.design_matrix: Optional[pd.DataFrame] = None
         self.contrasts: Dict[str, np.ndarray] = {}
         self.categorical_value_mapping: Dict[str, str] = {}
