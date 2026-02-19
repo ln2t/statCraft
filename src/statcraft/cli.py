@@ -10,7 +10,7 @@ import logging
 import sys
 import textwrap
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from statcraft import __version__
 from statcraft.config import Config, create_default_config
@@ -32,6 +32,65 @@ class Colors:
     END = '\033[0m'
 
 
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter with colors for different log levels."""
+
+    COLORS = {
+        'DEBUG': '\033[94m',      # Blue
+        'INFO': '\033[92m',       # Green
+        'WARNING': '\033[93m',    # Yellow
+        'ERROR': '\033[91m',      # Red
+        'CRITICAL': '\033[91m\033[1m',  # Red + Bold
+    }
+
+    RESET = '\033[0m'
+
+    def format(self, record):
+        """Format log record with color."""
+        original_levelname = record.levelname
+        color = self.COLORS.get(record.levelname, '')
+        record.levelname = f"{color}{record.levelname}{self.RESET}"
+        result = super().format(record)
+        record.levelname = original_levelname
+        return result
+
+
+def setup_logging(verbose: bool = False, log_file: Optional[str] = None) -> logging.Logger:
+    """Configure logging with color support.
+
+    Args:
+        verbose: If True, set log level to DEBUG, otherwise INFO
+        log_file: Optional path to log file
+
+    Returns:
+        Configured logger instance
+    """
+    level = logging.DEBUG if verbose else logging.INFO
+
+    logger = logging.getLogger('statcraft')
+    logger.setLevel(level)
+    logger.handlers.clear()
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(level)
+    formatter = ColoredFormatter('%(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(level)
+        plain_formatter = logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        file_handler.setFormatter(plain_formatter)
+        logger.addHandler(file_handler)
+
+    logger.propagate = False
+    return logger
+
+
 class ColoredHelpFormatter(argparse.RawDescriptionHelpFormatter):
     """Custom formatter with colored section headers."""
 
@@ -49,53 +108,19 @@ class ColoredHelpFormatter(argparse.RawDescriptionHelpFormatter):
         super().start_section(heading)
 
 
-def _validate_bids(bids_dir: str, verbose: int = 0) -> None:
-    """
-    Validate BIDS dataset structure.
-    
-    Parameters
-    ----------
-    bids_dir : str
-        Path to BIDS rawdata directory.
-    verbose : int
-        Verbosity level.
-        
-    Raises
-    ------
-    ValueError
-        If BIDS validation fails.
-    """
-    from statcraft.core.data_loader import DataLoader
-    import tempfile
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
-        loader = DataLoader(
-            bids_dir=bids_dir,
-            derivatives=[bids_dir],
-            output_dir=tmpdir,
-        )
-        
-        # Basic validation: check if participants exist
-        if loader.participants is None or len(loader.participants) == 0:
-            raise ValueError("No participants found in BIDS dataset")
-        
-        if verbose > 0:
-            print(f"  Found {len(loader.participants)} participants")
-
-
 def create_parser() -> argparse.ArgumentParser:
     """Create command-line argument parser."""
 
     description = textwrap.dedent(f"""
     {Colors.BOLD}{Colors.GREEN}╔══════════════════════════════════════════════════════════════════════════════╗
-    ║                     StatCraft v{__version__:<58}║
-    ║                  BIDS-based Second-Level Analysis Tool                    ║
+    ║                     StatCraft v{__version__:<46}║
+    ║                     Second-Level Neuroimaging Analysis                       ║
     ╚══════════════════════════════════════════════════════════════════════════════╝{Colors.END}
 
     {Colors.BOLD}Description:{Colors.END}
-      StatCraft performs second-level neuroimaging analyses on BIDS-compliant datasets.
-      It processes individual-level statistics and applies group-level workflows to
-      produce analysis-ready outputs that conform to BIDS derivative standards.
+      StatCraft performs second-level neuroimaging analyses using flexible pattern 
+      matching for file discovery. It processes individual-level statistics and applies 
+      group-level workflows to produce analysis-ready outputs.
 
     {Colors.BOLD}Supported Analyses:{Colors.END}
       • One-sample t-tests
@@ -105,12 +130,12 @@ def create_parser() -> argparse.ArgumentParser:
       • Connectivity matrix analysis (edge-wise statistics)
 
     {Colors.BOLD}Workflow:{Colors.END}
-      1. Discover input data from BIDS dataset structure
-      2. Validate data integrity and consistency
-      3. Configure analysis parameters
-      4. Execute main processing pipeline
-      5. Generate BIDS-compliant outputs with metadata
-      6. Produce analysis reports and quality metrics
+      1. Discover input data using flexible glob patterns
+      2. Filter participants (optionally using --participant-label)
+      3. Validate data integrity and consistency
+      4. Configure analysis parameters
+      5. Execute main processing pipeline
+      6. Generate outputs with metadata and analysis reports
     """)
 
     epilog = textwrap.dedent(f"""
@@ -118,97 +143,76 @@ def create_parser() -> argparse.ArgumentParser:
     {Colors.BOLD}EXAMPLES{Colors.END}
     {Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
 
-    {Colors.BOLD}Configuration File:{Colors.END}
+    {Colors.BOLD}Generate Default Configuration:{Colors.END}
 
-      {Colors.YELLOW}# Generate default configuration{Colors.END}
-      statcraft --init-config config.yaml
+      {Colors.YELLOW}statcraft --init-config config.yaml{Colors.END}
 
-      {Colors.YELLOW}# Run analysis with config file{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -c config.yaml
+    {Colors.BOLD}One-Sample T-Tests:{Colors.END}
 
-    {Colors.BOLD}One-Sample Tests:{Colors.END}
+      {Colors.YELLOW}# Simple one-sample t-test on motor task maps{Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type one-sample \\
+          --pattern "*task-motor*beta1*.nii.gz"
+      {Colors.YELLOW}# One-sample t-test with spatial smoothing (FWHM in mm){Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type one-sample \\
+          --pattern "*task-motor*beta1*.nii.gz" \\
+          --smoothing 6
+    {Colors.BOLD}Two-Sample T-Tests (Group Comparisons):{Colors.END}
 
-      {Colors.YELLOW}# Process all subjects with default pattern{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample
+      {Colors.YELLOW}# Compare controls vs patients using distinguishable names{Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type two-sample \\
+          --patterns "controls=sub-c*.nii.gz patients=sub-p*.nii.gz"
 
-      {Colors.YELLOW}# Use specific glob pattern for images{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample -p '*gas*cvr*.nii.gz'
+    {Colors.BOLD}Paired T-Tests (Within-Subject Comparisons):{Colors.END}
 
-      {Colors.YELLOW}# Exclude specific images from analysis{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample -p '*cvr*.nii.gz' -e '*label-bad*'
+      {Colors.YELLOW}# Compare session 1 to session 2, paired by subject (default pairing){Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type paired \\
+          --patterns "session1=*ses-1*.nii.gz session2=*ses-2*.nii.gz"
 
-    {Colors.BOLD}Group Comparisons (Two-Sample):{Colors.END}
-
-      {Colors.YELLOW}# Using group column in participants.tsv{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t two-sample --group-column group
-
-      {Colors.YELLOW}# Using sample-specific patterns{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t two-sample \\
-          -P 'GS=*gas*GS*cvr*.nii.gz SSS=*gas*SSS*cvr*.nii.gz' -C 'GS-SSS'
-
-    {Colors.BOLD}Paired Comparisons:{Colors.END}
-
-      {Colors.YELLOW}# Within-subject pairing by subject ID{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t paired --pair-by sub \\
-          -P 'pre=*pre*.nii.gz post=*post*.nii.gz' -C 'post-pre'
+      {Colors.YELLOW}# Pair by session instead of subject{Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type paired \\
+          --patterns "pre=*ses-pre*.nii.gz post=*ses-post*.nii.gz" \\
+          --pair-by "ses"
 
     {Colors.BOLD}General Linear Model (GLM):{Colors.END}
 
-      {Colors.YELLOW}# Age effect on connectivity{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives --data-type connectivity \\
-          -t glm --regressors age -C age -p '**/*_connmat.npy'
+      {Colors.YELLOW}# GLM with all columns from participants.tsv (default behavior){Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type glm \\
+          --participants-file /path/to/participants.tsv \\
+          --categorical-regressors sex group \\
+          --pattern "*stat-effect*.nii.gz"
 
-      {Colors.YELLOW}# Sex effect (categorical) controlling for age{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t glm \\
-          --regressors age sex --categorical-regressors sex -C 'sex_M-sex_F'
+      {Colors.YELLOW}# GLM with specific regressors and multiple contrasts{Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type glm \\
+          --participants-file /path/to/participants.tsv \\
+          --regressors age IQ \\
+          --categorical-regressors sex \\
+          --contrasts age M-F "0.5*M+0.5*F-mean" \\
+          --pattern "*stat-effect*.nii.gz"
 
-    {Colors.BOLD}BIDS Entity Filtering:{Colors.END}
-
-      {Colors.YELLOW}# Process specific participants{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample -p participant 01 02 03
-
-      {Colors.YELLOW}# Process specific task and session{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample --task rest --session 01
-
-      {Colors.YELLOW}# Filter by template space{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample --space MNI152NLin2009cAsym
-
-    {Colors.BOLD}Temporal Processing:{Colors.END}
-
-      {Colors.YELLOW}# Drop initial volumes and set minimum segment length{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample \\
-          --drop-initial 4 --min-segment-length 5
-
-    {Colors.BOLD}Advanced Options:{Colors.END}
-
-      {Colors.YELLOW}# Enable permutation testing{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample --permutation
-
-      {Colors.YELLOW}# Custom atlas and cluster analysis{Colors.END}
-      statcraft /data/bids /data/output participant \\
-          -d /data/derivatives/fmriprep -t one-sample \\
-          --atlas aal --extra-cluster-analysis
+      {Colors.YELLOW}# GLM with no intercept and selective z-scoring{Colors.END}
+      statcraft /path/to/first_level /path/to/output group \\
+          --analysis-type glm \\
+          --participants-file /path/to/participants.tsv \\
+          --regressors sex age IQ \\
+          --categorical-regressors sex \\
+          --no-standardize-regressors age \\
+          --no-intercept \\
+          --contrasts age M-F \\
+          --pattern "*stat-effect*.nii.gz"
 
     {Colors.BOLD}{Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
     {Colors.BOLD}MORE INFORMATION{Colors.END}
-    {Colors.GREEN}═══════════════════════════════════════════════════════════════════════════════{Colors.END}
+    {Colors.GREEN}═════════════════════════════════════════════════════════════════════════════════{Colors.END}
 
-      Documentation:  https://github.com/arovai/StatCraft
-      Report Issues:  https://github.com/arovai/StatCraft/issues
+    Documentation:  https://github.com/ln2t/StatCraft
+    Report Issues:  https://github.com/ln2t/StatCraft/issues
       Version:        {__version__}
     """)
 
@@ -231,7 +235,9 @@ def create_parser() -> argparse.ArgumentParser:
         "input_dir",
         type=Path,
         metavar="INPUT_DIR",
-        help="Path to the BIDS dataset root directory.",
+        help="Path to dataset root or derivatives folder. Can be either:\n"
+             "  • Dataset root directory (use with --derivatives for separate derivatives)\n"
+             "  • Derivatives folder directly (optional --participants-file if needed)",
     )
 
     required.add_argument(
@@ -243,9 +249,9 @@ def create_parser() -> argparse.ArgumentParser:
 
     required.add_argument(
         "analysis_level",
-        choices=["participant"],
-        metavar="{participant}",
-        help="Analysis level. Currently only 'participant' is supported.",
+        choices=["group"],
+        metavar="{group}",
+        help="Analysis level. Currently only 'group' is supported.",
     )
 
     # =========================================================================
@@ -307,12 +313,21 @@ def create_parser() -> argparse.ArgumentParser:
              "Can be specified multiple times.",
     )
 
+    derivatives.add_argument(
+        "--participants-file",
+        type=Path,
+        metavar="FILE",
+        dest="participants_file",
+        help="Path to participants.tsv file. Use this when INPUT_DIR is directly a derivatives "
+             "folder without participants.tsv. If not provided, will look for participants.tsv in INPUT_DIR.",
+    )
+
     # =========================================================================
-    # BIDS ENTITY FILTERS
+    # PARTICIPANT FILTERING
     # =========================================================================
     filters = parser.add_argument_group(
-        f'{Colors.BOLD}BIDS Entity Filters{Colors.END}',
-        "Filter which data to process based on BIDS entities."
+        f'{Colors.BOLD}Participant Filtering{Colors.END}',
+        "Filter which participants to include in the analysis."
     )
 
     filters.add_argument(
@@ -320,39 +335,9 @@ def create_parser() -> argparse.ArgumentParser:
         metavar="LABEL",
         dest="participant_label",
         nargs='+',
-        help="Process one or more participants (without 'sub-' prefix).",
-    )
-
-    filters.add_argument(
-        "-t", "--task",
-        metavar="TASK",
-        help="Process only this task (without 'task-' prefix).",
-    )
-
-    filters.add_argument(
-        "-s", "--session",
-        metavar="SESSION",
-        help="Process only this session (without 'ses-' prefix).",
-    )
-
-    filters.add_argument(
-        "-r", "--run",
-        metavar="RUN",
-        type=int,
-        help="Process only this run number.",
-    )
-
-    filters.add_argument(
-        "--space",
-        metavar="SPACE",
-        help="Process only data in this template space "
-             "(e.g., 'MNI152NLin2009cAsym').",
-    )
-
-    filters.add_argument(
-        "--label",
-        metavar="STRING",
-        help="Custom label added to all output filenames (BIDS entity).",
+        help="Process one or more participants (without 'sub-' prefix). "
+             "If not specified, all participants found will be included. "
+             "Use glob patterns for other filtering (e.g., '*task-rest*' in --pattern).",
     )
 
     # =========================================================================
@@ -367,7 +352,9 @@ def create_parser() -> argparse.ArgumentParser:
         metavar="TYPE",
         choices=["one-sample", "two-sample", "paired", "glm"],
         dest="analysis_type",
-        help="Type of analysis to run.",
+        help="Type of analysis to run. Choices: 'one-sample' (one-sample t-test), "
+             "'two-sample' (group comparison or method comparison), 'paired' (within-subject comparison), "
+             "'glm' (General Linear Model with continuous/categorical regressors).",
     )
 
     analysis.add_argument(
@@ -381,10 +368,14 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     analysis.add_argument(
-        "--contrast", "-C",
+        "--contrasts", "-C",
         metavar="EXPR",
-        help="Contrast expression for the analysis. For GLM: use design matrix column names "
-             "(e.g., 'age'). For comparisons with patterns: use sample names (e.g., 'GS-SSS').",
+        nargs='+',
+        help="Contrast expression(s) for the analysis. Can specify multiple contrasts separated by spaces. "
+             "For GLM: use design matrix column names (e.g., 'age', 'sex_M-sex_F'), "
+             "original categorical values (e.g., 'M-F'), or 'mean' to refer to the intercept. "
+             "Examples: --contrasts age M-F '0.5*M+0.5*F-mean'. "
+             "For comparisons with patterns: use sample names (e.g., 'GS-SSS').",
     )
 
     # =========================================================================
@@ -421,14 +412,7 @@ def create_parser() -> argparse.ArgumentParser:
     # =========================================================================
     design = parser.add_argument_group(
         f'{Colors.BOLD}Design Matrix Options{Colors.END}',
-        "Configure regressors and group comparisons."
-    )
-
-    design.add_argument(
-        "--group-column",
-        metavar="COLUMN",
-        dest="group_column",
-        help="Column name in participants.tsv for group comparison (two-sample test).",
+        "Configure regressors for GLM analysis."
     )
 
     design.add_argument(
@@ -436,7 +420,9 @@ def create_parser() -> argparse.ArgumentParser:
         metavar="COLUMN",
         nargs='+',
         help="Regressor column names from participants.tsv (e.g., age sex IQ). "
-             "Continuous variables are z-scored; categorical variables are dummy-coded.",
+             "If not specified, ALL columns from participants.tsv are used by default. "
+             "All regressors are treated as continuous and z-scored by default. "
+             "Use --categorical-regressors to treat specific columns as categorical (dummy-coded).",
     )
 
     design.add_argument(
@@ -444,14 +430,25 @@ def create_parser() -> argparse.ArgumentParser:
         metavar="COLUMN",
         nargs='+',
         dest="categorical_regressors",
-        help="Columns to treat as categorical (dummy-coded).",
+        help="Columns to treat as categorical (dummy-coded) in GLM. "
+             "Can include columns NOT specified in --regressors (they will be fetched from participants.tsv). "
+             "Use for columns with non-numerical values (e.g., sex with M/F, treatment with control/drug).",
     )
 
     design.add_argument(
         "--no-standardize-regressors",
-        action="store_true",
+        metavar="COLUMN",
+        nargs='+',
         dest="no_standardize_regressors",
-        help="Disable z-scoring of continuous regressors (keep original units).",
+        help="Regressor column names to keep in original units (skip z-scoring). "
+             "Useful for interpretability when coefficients need original scale (e.g., age IQ).",
+    )
+
+    design.add_argument(
+        "--no-intercept",
+        action="store_true",
+        dest="no_intercept",
+        help="Exclude the intercept from the design matrix. By default, an intercept is included.",
     )
 
     # =========================================================================
@@ -464,9 +461,13 @@ def create_parser() -> argparse.ArgumentParser:
 
     paired.add_argument(
         "--pair-by",
-        metavar="COLUMN",
+        metavar="ENTITY",
         dest="pair_by",
-        help="Column name for pairing subjects in paired t-test.",
+        default=None,
+        help="BIDS entity key for pairing observations (default: 'sub' for subject). "
+             "Supports BIDS abbreviations ('sub', 'ses', 'run', etc.) or full names. "
+             "Examples: --pair-by sub, --pair-by ses, --pair-by run. "
+             "Data filenames must contain matching entity values (e.g., '*ses-pre*').",
     )
 
     paired.add_argument(
@@ -514,50 +515,9 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     # =========================================================================
-    # TEMPORAL PROCESSING OPTIONS
-    # =========================================================================
-    temporal = parser.add_argument_group(
-        f'{Colors.BOLD}Temporal Processing Options{Colors.END}',
-        "Options for temporal volume selection and segmentation."
-    )
-
-    temporal.add_argument(
-        "--threshold",
-        metavar="VALUE",
-        type=float,
-        dest="threshold",
-        help="Quality threshold for volume selection. Volumes below threshold excluded.",
-    )
-
-    temporal.add_argument(
-        "--extend",
-        metavar="N",
-        type=int,
-        default=0,
-        help="Extend exclusion to N volumes before AND after flagged volumes (default: 0).",
-    )
-
-    temporal.add_argument(
-        "--min-segment-length",
-        metavar="N",
-        type=int,
-        dest="min_segment_length",
-        default=0,
-        help="Minimum contiguous segment length to retain after exclusion. Requires --threshold (default: 0).",
-    )
-
-    temporal.add_argument(
-        "--drop-initial",
-        metavar="N",
-        type=int,
-        dest="drop_initial",
-        default=0,
-        help="Number of initial volumes to drop (default: 0).",
-    )
-
-    # =========================================================================
     # INFERENCE / STATISTICS OPTIONS
     # =========================================================================
+
     inference = parser.add_argument_group(
         f'{Colors.BOLD}Inference Options{Colors.END}',
         "Statistical testing parameters."
@@ -631,26 +591,14 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     processing.add_argument(
-        "--smoothing-fwhm",
+        "--smoothing",
         metavar="MM",
         type=float,
-        default=5.0,
+        default=0,
         dest="smoothing_fwhm",
-        help="Smoothing kernel FWHM in mm for second-level GLM. Set to 0 to disable (default: 5.0).",
-    )
-
-    processing.add_argument(
-        "--no-report",
-        action="store_true",
-        dest="no_report",
-        help="Disable HTML report generation.",
-    )
-
-    processing.add_argument(
-        "--skip-bids-validator",
-        action="store_true",
-        dest="skip_bids_validator",
-        help="Skip BIDS validation of the rawdata folder.",
+        help="Smoothing kernel FWHM in mm for brain map analysis. "
+             "Smoothing strength in mm for second-level analysis of brain maps (not applicable to connectivity matrices). "
+             "Use 0 for no smoothing (default: 0).",
     )
 
     # =========================================================================
@@ -730,11 +678,7 @@ def main():
         return
     
     # Set up logging
-    log_level = logging.WARNING - (args.verbose * 10)
-    logging.basicConfig(
-        level=max(log_level, logging.DEBUG),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    setup_logging(verbose=args.verbose > 0)
     
     print(f"{Colors.BOLD}{Colors.GREEN}StatCraft v{__version__}{Colors.END}")
     print("=" * 40)
@@ -753,17 +697,6 @@ def main():
     # Determine input and output directories
     bids_dir = args.input_dir
     output_dir = args.output_dir
-    
-    # Run BIDS validation unless skipped
-    if not args.skip_bids_validator:
-        print("Validating BIDS dataset...")
-        try:
-            _validate_bids(str(bids_dir), args.verbose)
-            print(f"{Colors.GREEN}✓ BIDS validation passed{Colors.END}")
-        except Exception as e:
-            print(f"{Colors.RED}✗ BIDS validation failed: {str(e)}{Colors.END}", file=sys.stderr)
-            print("Use --skip-bids-validator to bypass this check.", file=sys.stderr)
-            sys.exit(1)
 
     # Validate mutual exclusivity of --scaling and --zscore
     if args.scaling and args.zscore:
@@ -849,50 +782,64 @@ def main():
             print(f"{Colors.YELLOW}⚠ Warning: Using scaling without key. Consider using 'key=pattern' format{Colors.END}", file=sys.stderr)
             print(f"   Example: --scaling 'brain={args.scaling}'", file=sys.stderr)
 
-    # Warn if --task/--session/--participant-label are used with --pattern
-    if args.pattern and (args.task or args.session or args.participant_label):
-        print(f"{Colors.YELLOW}⚠ Warning: When using --pattern, BIDS filters are applied AFTER pattern matching.{Colors.END}", file=sys.stderr)
-        print("   It's better to include filters directly in the pattern.", file=sys.stderr)
+    # Note: No warning needed - pattern matching is the primary method now
 
     # Build configuration from CLI options
     config_overrides = {}
 
     if args.analysis_type:
         config_overrides["analysis_type"] = args.analysis_type
-    if args.contrast:
-        config_overrides["contrast"] = args.contrast
+    if args.contrasts:
+        config_overrides["contrasts"] = list(args.contrasts)
 
-    # BIDS filters should be nested under bids_filters key
-    if args.task or args.session or args.participant_label:
-        config_overrides["bids_filters"] = {}
-        if args.task:
-            config_overrides["bids_filters"]["task"] = args.task
-        if args.session:
-            config_overrides["bids_filters"]["session"] = args.session
-        if args.participant_label:
-            config_overrides["bids_filters"]["participant"] = list(args.participant_label)
+    # Participant filter
+    if args.participant_label:
+        config_overrides["participant_label"] = list(args.participant_label)
     
-    # Group comparison
-    if args.group_column:
-        config_overrides["group_comparison"] = {"group_column": args.group_column}
+    # Design matrix configuration (for GLM)
+    # Default: use all columns from participants.tsv if --regressors not specified
+    # If --regressors specified: use only those columns
+    # --categorical-regressors can specify columns not in --regressors (will be add them)
+    design_matrix_config: Dict[str, Any] = {
+        "add_intercept": not args.no_intercept,
+        "standardize_continuous": True,
+    }
     
-    # Design matrix with regressors
     if args.regressors:
-        config_overrides["design_matrix"] = {
-            "columns": list(args.regressors),
-            "add_intercept": True,
-            "standardize_continuous": not args.no_standardize_regressors,
-        }
+        # User specified columns - use these plus any additional categorical regressors
+        columns = list(args.regressors)
+        # Add categorical regressors not already in the list
         if args.categorical_regressors:
-            config_overrides["design_matrix"]["categorical_columns"] = list(args.categorical_regressors)
-        
-        if args.verbose > 0:
-            print(f"Design matrix configuration:")
-            print(f"  Regressors: {', '.join(args.regressors)}")
-            if args.categorical_regressors:
-                print(f"  Categorical: {', '.join(args.categorical_regressors)}")
-            if args.no_standardize_regressors:
-                print(f"  Standardize continuous: disabled")
+            for cat_col in args.categorical_regressors:
+                if cat_col not in columns:
+                    columns.append(cat_col)
+        design_matrix_config["columns"] = columns
+    else:
+        # No --regressors specified: use "all" as a flag to use all participants.tsv columns
+        design_matrix_config["columns"] = "all"
+    
+    if args.categorical_regressors:
+        design_matrix_config["categorical_columns"] = list(args.categorical_regressors)
+    if args.no_standardize_regressors:
+        design_matrix_config["no_standardize_columns"] = list(args.no_standardize_regressors)
+    
+    config_overrides["design_matrix"] = design_matrix_config
+    
+    if args.verbose > 0:
+        print(f"Design matrix configuration:")
+        columns_cfg = design_matrix_config.get("columns")
+        if columns_cfg == "all":
+            print(f"  Regressors: ALL columns from participants.tsv")
+        elif isinstance(columns_cfg, list):
+            print(f"  Regressors: {', '.join(columns_cfg)}")
+        if args.categorical_regressors:
+            print(f"  Categorical regressors (dummy-coded): {', '.join(args.categorical_regressors)}")
+        if args.no_standardize_regressors:
+            print(f"  No z-scoring applied to: {', '.join(args.no_standardize_regressors)}")
+        if args.no_intercept:
+            print(f"  Intercept: excluded (--no-intercept)")
+        else:
+            print(f"  Intercept: included")
     
     # Paired test
     if args.pair_by:
@@ -942,7 +889,7 @@ def main():
 
     # Output settings
     config_overrides["output"] = {
-        "generate_report": not args.no_report,
+        "generate_report": True,
         "save_supplementary_data": args.save_supplementary_data,
     }
 
@@ -964,6 +911,7 @@ def main():
             output_dir=str(output_dir),
             derivatives=[str(d) for d in (args.derivatives or [])],
             config=cfg,
+            participants_file=str(args.participants_file) if args.participants_file else None,
         )
 
         # Determine if we should run connectivity analysis

@@ -1,0 +1,57 @@
+# Example configuration for paired t-test pairing by session
+# This is an advanced example showing how to pair observations by a BIDS entity
+# other than subject (e.g., session, run, task, etc.)
+#
+# Scenario: You have multiple sessions and want to pair conditions WITHIN each session
+# instead of pairing across subjects. This would be relevant when you want to analyze
+# how sessions differ (e.g., are pre-treatment sessions different from post-treatment sessions?)
+
+# Analysis type
+analysis_type: paired
+
+# Participant filtering (optional)
+participant_label: null
+
+# File pattern for finding images - should match both conditions
+file_pattern: "**/*task-nback*space-MNI*stat-effect*.nii.gz"
+
+# Paired test settings
+# By default, pair_by is "sub" (subjects). Here we override it to pair by session.
+paired_test:
+  pair_by: ses        # BIDS abbreviations (ses=session, sub=subject, run=run, task=task, etc.)
+  condition1: pre     # First condition 
+  condition2: post    # Second condition
+
+# NOTES:
+# - Filenames must contain BIDS-like key-value pairs (e.g., sub-001_ses-pre_*.nii.gz)
+# - pair_by supports both BIDS abbreviations (ses, sub, run, task) and full names
+# - Files will be grouped by the specified entity value:
+#   * pair_by="ses": Files with ses-pre and ses-post will be paired together
+#   * pair_by="sub": Files with sub-001, sub-002, etc. will be paired together (default)
+#   * pair_by="run": Files with run-1 and run-2 will be paired together
+
+# Statistical inference settings
+inference:
+  alpha_corrected: 0.05
+  alpha_uncorrected: 0.001
+  cluster_threshold: 10
+  two_sided: true
+  corrections:
+    - uncorrected
+    - fdr
+    - bonferroni
+  run_permutation: false
+
+# Atlas for cluster annotation
+atlas: harvard_oxford
+
+# Output settings
+output:
+  save_maps: true
+  save_tables: true
+  generate_report: true
+  report_filename: paired_by_session_report.html
+
+# Computational settings
+n_jobs: 1
+verbose: 1

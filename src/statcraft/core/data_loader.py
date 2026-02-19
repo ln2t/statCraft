@@ -1,9 +1,9 @@
-"""
-Data loader module for BIDS-compliant neuroimaging data.
+"""  
+Data loader module for neuroimaging data.
 
 This module handles:
-- BIDS data discovery and filtering
-- MNI space validation
+- Data discovery using glob patterns
+- Participant filtering
 - Data consistency checks
 - Paired test data organization
 - Connectivity matrix (.npy) loading
@@ -24,32 +24,45 @@ logger = logging.getLogger(__name__)
 
 class DataLoader:
     """
-    BIDS-compliant data loader for second-level neuroimaging analysis.
+    Data loader for second-level neuroimaging analysis.
     
-    Handles data discovery, filtering, validation, and organization
-    for group-level analyses.
+    Handles data discovery using flexible pattern matching, participant filtering,
+    validation, and organization for group-level analyses.
     
     Parameters
     ----------
     bids_dir : str or Path
-        Path to the BIDS rawdata directory (must contain participants.tsv).
+        Path to the dataset root directory. Only needs to contain participants.tsv
+        for GLM and two-sample analyses.
     derivatives : list of str or Path
         List of paths to derivative folders containing images to analyze.
     output_dir : str or Path
         Path to output directory for StatCraft results.
+    participants_file : str or Path, optional
+        Path to a custom participants.tsv file. If not provided, will look for
+        participants.tsv in bids_dir. Useful when bids_dir is directly a
+        derivatives folder without participants.tsv. Only required for GLM and
+        two-sample analyses.
+    analysis_type : str, optional
+        Type of analysis: 'one-sample', 'two-sample', 'paired', or 'glm'.
+        Default is 'glm'. Only 'glm' and 'two-sample' require participants.tsv.
     
     Attributes
     ----------
     bids_dir : Path
-        Path to BIDS rawdata directory.
+        Path to dataset root directory.
     derivatives : list of Path
         Paths to derivative folders.
     output_dir : Path
         Output directory for results.
+    participants_file : Path or None
+        Path to custom participants file if provided.
+    analysis_type : str
+        Type of analysis being performed.
     layout : BIDSLayout
         PyBIDS layout object for data discovery.
-    participants : pd.DataFrame
-        Participants metadata from participants.tsv.
+    participants : pd.DataFrame or None
+        Participants metadata from participants.tsv, or None if not required/available.
     """
     
     def __init__(
@@ -57,10 +70,14 @@ class DataLoader:
         bids_dir: Union[str, Path],
         derivatives: List[Union[str, Path]],
         output_dir: Union[str, Path],
+        participants_file: Optional[Union[str, Path]] = None,
+        analysis_type: str = "glm",
     ):
         self.bids_dir = Path(bids_dir)
         self.derivatives = [Path(d) for d in derivatives]
         self.output_dir = Path(output_dir)
+        self.participants_file = Path(participants_file) if participants_file else None
+        self.analysis_type = analysis_type
         
         # Validate paths
         self._validate_paths()
@@ -68,25 +85,45 @@ class DataLoader:
         # Initialize BIDS layout
         self.layout = self._init_bids_layout()
         
-        # Load participants metadata
+        # Load participants metadata (only if required by analysis type)
         self.participants = self._load_participants()
         
         # Cache for loaded images (NIfTI) and matrices (numpy)
         self._image_cache: Dict[str, Union[nib.Nifti1Image, np.ndarray]] = {}
         
         logger.info(f"DataLoader initialized with BIDS dir: {self.bids_dir}")
-        logger.info(f"Found {len(self.participants)} participants")
+        if self.participants is not None:
+            logger.info(f"Found {len(self.participants)} participants")
+        else:
+            logger.info("No participants file loaded (not required for this analysis type)")
     
     def _validate_paths(self) -> None:
         """Validate that required paths exist."""
         if not self.bids_dir.exists():
-            raise FileNotFoundError(f"BIDS directory not found: {self.bids_dir}")
+            raise FileNotFoundError(f"Dataset directory not found: {self.bids_dir}")
         
-        participants_file = self.bids_dir / "participants.tsv"
-        if not participants_file.exists():
-            raise FileNotFoundError(
-                f"participants.tsv not found in BIDS directory: {participants_file}"
-            )
+        # Check if participants.tsv is required for this analysis type
+        requires_participants = self.analysis_type in ["glm", "two-sample", "two_sample"]
+        
+        if requires_participants:
+            # Check for participants.tsv in bids_dir or use provided participants_file
+            if self.participants_file:
+                if not self.participants_file.exists():
+                    raise FileNotFoundError(
+                        f"Participants file not found: {self.participants_file}"
+                    )
+            else:
+                participants_file = self.bids_dir / "participants.tsv"
+                if not participants_file.exists():
+                    raise FileNotFoundError(
+                        f"participants.tsv not found in directory: {participants_file}. "
+                        f"Use --participants-file to provide an alternative location."
+                    )
+        else:
+            # For one-sample and paired analyses, participants.tsv is optional
+            participants_file = self.bids_dir / "participants.tsv"
+            if not self.participants_file and participants_file.exists():
+                logger.debug("Found participants.tsv in BIDS dir (optional for this analysis type)")
         
         for deriv_path in self.derivatives:
             if not deriv_path.exists():
@@ -138,9 +175,25 @@ class DataLoader:
             layout = BIDSLayout(self.bids_dir, validate=False)
             return layout
     
-    def _load_participants(self) -> pd.DataFrame:
-        """Load and validate participants.tsv."""
-        participants_file = self.bids_dir / "participants.tsv"
+    def _load_participants(self) -> Optional[pd.DataFrame]:
+        """Load and validate participants.tsv if required."""
+        # Check if participants.tsv is required for this analysis type
+        requires_participants = self.analysis_type in ["glm", "two-sample", "two_sample"]
+        
+        # Try to find participants file
+        if self.participants_file:
+            participants_file = self.participants_file
+        else:
+            participants_file = self.bids_dir / "participants.tsv"
+        
+        # If file doesn't exist and it's not required, return None
+        if not participants_file.exists():
+            if not requires_participants:
+                logger.debug(f"No participants.tsv found for {self.analysis_type} analysis (not required)")
+                return None
+            # If required and doesn't exist, error is raised in _validate_paths
+            return None
+        
         df = pd.read_csv(participants_file, sep="\t")
         
         # Ensure participant_id column exists
@@ -150,30 +203,31 @@ class DataLoader:
         # Remove 'sub-' prefix if present for easier matching
         df["subject"] = df["participant_id"].str.replace("sub-", "", regex=False)
         
-        logger.info(f"Loaded participants.tsv with columns: {list(df.columns)}")
+        logger.info(f"Loaded participants.tsv from: {participants_file}")
+        logger.info(f"Columns: {list(df.columns)}")
         return df
     
     def get_images(
         self,
-        bids_filters: Optional[Dict] = None,
+        participant_label: Optional[List[str]] = None,
         pattern: Optional[str] = None,
         exclude_pattern: Optional[str] = None,
         extension: str = ".nii.gz",
     ) -> List[Dict]:
         """
-        Get image files matching BIDS filters.
+        Get image files using pattern matching and optional participant filtering.
 
         Parameters
         ----------
-        bids_filters : dict, optional
-            Dictionary of BIDS entities to filter by.
-            E.g., {"task": "nback", "session": "pre", "subject": ["01", "02"]}
+        participant_label : list of str, optional
+            List of participant labels to include (without 'sub-' prefix).
+            If None, includes all participants.
         pattern : str, optional
             Glob pattern for finding files in derivatives.
-            E.g., "**/sub-*_task-*_stat-effect_statmap.nii.gz"
+            E.g., "**/*task-rest*space-MNI152*stat-effect*.nii.gz"
         exclude_pattern : str, optional
             Glob pattern to exclude files from the match.
-            E.g., "*label-GS*"
+            E.g., "*label-bad*"
         extension : str
             File extension to search for.
 
@@ -183,23 +237,20 @@ class DataLoader:
             List of dictionaries with image info:
             - 'path': Path to the image file
             - 'subject': Subject ID
-            - 'session': Session ID (if applicable)
-            - 'task': Task name (if applicable)
-            - 'entities': All BIDS entities
+            - 'entities': Parsed BIDS-like entities
         """
         images = []
-        bids_filters = bids_filters or {}
 
-        # If pattern is provided, ONLY use glob matching (more specific)
+        # If pattern is provided, use glob matching
         if pattern:
             logger.info(f"Using glob pattern matching: {pattern}")
-            glob_images = self._get_images_glob(pattern, bids_filters, extension)
+            glob_images = self._get_images_glob(pattern, participant_label, extension)
             images.extend(glob_images)
         else:
             # No pattern specified, try PyBIDS first
             logger.info("Using PyBIDS for image discovery")
             try:
-                bids_images = self._get_images_pybids(bids_filters, extension)
+                bids_images = self._get_images_pybids(participant_label, extension)
                 if bids_images:
                     images.extend(bids_images)
             except Exception as e:
@@ -208,7 +259,7 @@ class DataLoader:
             # If PyBIDS failed, fall back to glob
             if not images:
                 logger.info("Falling back to glob pattern matching")
-                glob_images = self._get_images_glob(pattern, bids_filters, extension)
+                glob_images = self._get_images_glob(pattern, participant_label, extension)
                 images.extend(glob_images)
 
         # Apply exclude pattern if provided
@@ -218,22 +269,15 @@ class DataLoader:
         
         if not images:
             if pattern:
-                logger.warning(f"No images found matching pattern '{pattern}' in derivatives directories:")
+                logger.warning(f"No images found matching pattern '{pattern}' in the following directories:")
+                logger.warning(f"  - Dataset directory: {self.bids_dir}")
                 for deriv_path in self.derivatives:
-                    logger.warning(f"  - {deriv_path}")
+                    logger.warning(f"  - Derivatives: {deriv_path}")
                 logger.warning("Hints:")
                 logger.warning("  - Make sure the pattern uses quotes: '*.nii.gz' not *.nii.gz")
                 logger.warning("  - Use '**/' for recursive search: '**/*.nii.gz'")
-
-                # Suggest including BIDS filters in pattern if filters were provided
-                if bids_filters:
-                    logger.warning("  - Include BIDS filters in the pattern instead of using separate flags:")
-                    if "task" in bids_filters:
-                        task_val = bids_filters["task"]
-                        logger.warning(f"    Example: '*task-{task_val}*.nii.gz' instead of --task {task_val}")
-                    if "session" in bids_filters:
-                        session_val = bids_filters["session"]
-                        logger.warning(f"    Example: '*ses-{session_val}*.nii.gz'")
+                logger.warning("  - Include task, session, space filters in the pattern:")
+                logger.warning("    Example: '*task-rest*ses-01*space-MNI152*.nii.gz'")
             else:
                 logger.warning("No images found matching the specified criteria")
         else:
@@ -243,7 +287,7 @@ class DataLoader:
     
     def _get_images_pybids(
         self,
-        bids_filters: Dict,
+        participant_label: Optional[List[str]],
         extension: str,
     ) -> List[Dict]:
         """Get images using PyBIDS."""
@@ -252,25 +296,10 @@ class DataLoader:
         # Build query
         query = {"extension": extension.lstrip(".")}
         
-        # Add filters
-        if "subject" in bids_filters:
-            subjects = bids_filters["subject"]
-            if isinstance(subjects, str):
-                subjects = [subjects]
+        # Add participant filter
+        if participant_label:
             # Remove 'sub-' prefix if present
-            query["subject"] = [s.replace("sub-", "") for s in subjects]
-        
-        if "session" in bids_filters:
-            sessions = bids_filters["session"]
-            if isinstance(sessions, str):
-                sessions = [sessions]
-            query["session"] = [s.replace("ses-", "") for s in sessions]
-        
-        if "task" in bids_filters:
-            tasks = bids_filters["task"]
-            if isinstance(tasks, str):
-                tasks = [tasks]
-            query["task"] = tasks
+            query["subject"] = [s.replace("sub-", "") for s in participant_label]
         
         # Get files from layout
         try:
@@ -281,8 +310,6 @@ class DataLoader:
                 images.append({
                     "path": file_path,
                     "subject": entities.get("subject"),
-                    "session": entities.get("session"),
-                    "task": entities.get("task"),
                     "entities": entities,
                     "data_type": self._determine_data_type(file_path),
                 })
@@ -294,7 +321,7 @@ class DataLoader:
     def _get_images_glob(
         self,
         pattern: Optional[str],
-        bids_filters: Dict,
+        participant_label: Optional[List[str]],
         extension: str,
     ) -> List[Dict]:
         """Get images using glob pattern matching."""
@@ -311,28 +338,36 @@ class DataLoader:
 
         logger.debug(f"Searching with glob pattern: {pattern}")
 
-        for deriv_path in self.derivatives:
-            logger.debug(f"Searching in: {deriv_path}")
-            matches = list(deriv_path.glob(pattern))
-            logger.debug(f"Found {len(matches)} potential matches in {deriv_path}")
+        # Build list of search directories: bids_dir + all derivatives
+        search_dirs = [self.bids_dir] + self.derivatives
+        
+        for search_path in search_dirs:
+            logger.debug(f"Searching in: {search_path}")
+            matches = list(search_path.glob(pattern))
+            logger.debug(f"Found {len(matches)} potential matches in {search_path}")
 
             for img_path in matches:
                 if not img_path.is_file():
                     continue
 
-                # Parse BIDS entities from filename
+                # Parse BIDS-like entities from filename
                 entities = self._parse_bids_entities(img_path)
 
-                # Apply filters
-                if not self._matches_filters(entities, bids_filters):
-                    logger.debug(f"Filtered out {img_path} (doesn't match filters)")
-                    continue
+                # Apply participant filter
+                if participant_label:
+                    subject = entities.get("subject")
+                    if not subject:
+                        logger.debug(f"Filtered out {img_path} (no subject entity)")
+                        continue
+                    # Normalize participant labels
+                    normalized_labels = [p.replace("sub-", "") for p in participant_label]
+                    if subject not in normalized_labels:
+                        logger.debug(f"Filtered out {img_path} (subject {subject} not in participant_label)")
+                        continue
 
                 images.append({
                     "path": img_path,
                     "subject": entities.get("subject"),
-                    "session": entities.get("session"),
-                    "task": entities.get("task"),
                     "entities": entities,
                     "data_type": self._determine_data_type(img_path),
                 })
@@ -340,7 +375,7 @@ class DataLoader:
         return images
     
     def _parse_bids_entities(self, filepath: Path) -> Dict:
-        """Parse BIDS entities from filename."""
+        """Parse BIDS-like entities from filename."""
         entities = {}
         name = filepath.stem
         
@@ -353,7 +388,7 @@ class DataLoader:
         for part in parts:
             if "-" in part:
                 key, value = part.split("-", 1)
-                # Map common BIDS keys
+                # Map common keys
                 key_map = {
                     "sub": "subject",
                     "ses": "session",
@@ -368,29 +403,6 @@ class DataLoader:
         
         return entities
     
-    def _matches_filters(self, entities: Dict, filters: Dict) -> bool:
-        """Check if entities match the specified filters."""
-        for key, values in filters.items():
-            if key not in entities:
-                continue
-
-            if isinstance(values, str):
-                values = [values]
-
-            # Normalize values (remove prefixes)
-            normalized_values = []
-            for v in values:
-                if key == "subject":
-                    v = v.replace("sub-", "")
-                elif key == "session":
-                    v = v.replace("ses-", "")
-                normalized_values.append(v)
-
-            if entities[key] not in normalized_values:
-                return False
-
-        return True
-
     def _apply_exclude_pattern(self, images: List[Dict], exclude_pattern: str) -> List[Dict]:
         """
         Apply exclude pattern to filter out unwanted images.
@@ -759,7 +771,7 @@ class DataLoader:
         images : list of dict
             List of image info dictionaries.
         pair_by : str
-            BIDS entity to pair by (e.g., "session", "task").
+            Entity to pair by (e.g., "session", "task"). Must be present in filenames.
         condition1 : str
             Value of pair_by for first condition.
         condition2 : str

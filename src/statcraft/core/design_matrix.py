@@ -36,12 +36,16 @@ class DesignMatrixBuilder:
         Built design matrix.
     contrasts : dict
         Dictionary of contrast name -> contrast vector.
+    categorical_value_mapping : dict
+        Mapping of original categorical values to dummy column names.
+        Format: {original_value: dummy_column_name}
     """
     
-    def __init__(self, participants: pd.DataFrame):
-        self.participants = participants.copy()
+    def __init__(self, participants: Optional[pd.DataFrame] = None):
+        self.participants = participants.copy() if participants is not None else None
         self.design_matrix: Optional[pd.DataFrame] = None
         self.contrasts: Dict[str, np.ndarray] = {}
+        self.categorical_value_mapping: Dict[str, str] = {}
     
     def build_design_matrix(
         self,
@@ -49,6 +53,7 @@ class DesignMatrixBuilder:
         add_intercept: bool = True,
         categorical_columns: Optional[List[str]] = None,
         standardize_continuous: bool = True,
+        no_standardize_columns: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """
         Build a design matrix from participant metadata.
@@ -61,9 +66,11 @@ class DesignMatrixBuilder:
             Whether to add an intercept column.
         categorical_columns : list of str, optional
             Columns to treat as categorical (will be dummy-coded).
-            If None, will auto-detect based on dtype.
+            If None, no auto-detection is performed (all treated as continuous).
         standardize_continuous : bool
-            Whether to standardize (z-score) continuous variables.
+            Whether to standardize (z-score) continuous variables by default.
+        no_standardize_columns : list of str, optional
+            Specific continuous columns to skip z-scoring for.
         
         Returns
         -------
@@ -77,13 +84,12 @@ class DesignMatrixBuilder:
         if missing:
             raise ValueError(f"Columns not found in participants.tsv: {missing}")
         
-        # Determine categorical columns
+        # Initialize categorical columns as empty set (no auto-detection)
         if categorical_columns is None:
             categorical_columns = []
-            for col in columns:
-                if self.participants[col].dtype == object or \
-                   self.participants[col].nunique() <= 5:
-                    categorical_columns.append(col)
+        
+        if no_standardize_columns is None:
+            no_standardize_columns = []
         
         # Process each column
         for col in columns:
@@ -95,16 +101,47 @@ class DesignMatrixBuilder:
                     drop_first=False,
                 )
                 design_matrix = pd.concat([design_matrix, dummies], axis=1)
+                
+                # Store mapping of original values to dummy column names
+                # e.g., "M" -> "sex_M", "F" -> "sex_F"
+                for dummy_col in dummies.columns:
+                    # Extract the original value from the dummy column name
+                    # Format: prefix_value, so split by '_' and take the last part
+                    original_value = dummy_col.split(f"{col}_", 1)[1]
+                    self.categorical_value_mapping[original_value] = dummy_col
+                
+                logger.debug(f"Column '{col}' (categorical): created {len(dummies.columns)} dummy variables")
+                logger.debug(f"  Value mappings: {dict(list(self.categorical_value_mapping.items())[-len(dummies.columns):])}") 
             else:
-                # Continuous variable
-                values = self.participants[col].astype(float)
-                if standardize_continuous:
+                # Continuous variable - attempt to convert to float
+                try:
+                    values = self.participants[col].astype(float)
+                except (ValueError, TypeError) as e:
+                    # Column contains non-numerical values
+                    unique_values = self.participants[col].unique()[:10]  # Show first 10 values
+                    error_msg = (
+                        f"Column '{col}' contains non-numerical values and cannot be treated as continuous. "
+                        f"Found values: {unique_values}. "
+                        f"Please use --categorical-regressors {col} to treat it as categorical."
+                    )
+                    logger.error(error_msg)
+                    raise ValueError(error_msg) from e
+                
+                # Apply z-scoring unless disabled globally or for this specific column
+                if standardize_continuous and col not in no_standardize_columns:
                     values = (values - values.mean()) / values.std()
+                    logger.debug(f"Column '{col}' (continuous): z-scored")
+                else:
+                    logger.debug(f"Column '{col}' (continuous): kept in original units")
+                
                 design_matrix[col] = values
         
         # Add intercept
         if add_intercept:
             design_matrix.insert(0, "intercept", 1.0)
+        
+        # Ensure all columns are numeric (float) for downstream processing
+        design_matrix = design_matrix.astype(float)
         
         self.design_matrix = design_matrix
         logger.info(f"Built design matrix with shape {design_matrix.shape}")
@@ -238,6 +275,52 @@ class DesignMatrixBuilder:
         
         return design_matrix
     
+    def _translate_contrast_expression(self, contrast_expression: str) -> str:
+        """
+        Translate original categorical values in contrast expressions to dummy column names.
+        Also translates "mean" to "intercept" for user convenience.
+        
+        Examples:
+        - "M-F" -> "sex_M-sex_F"
+        - "0.5*M+0.5*F" -> "0.5*sex_M+0.5*sex_F"
+        - "age" -> "age" (unchanged if not categorical)
+        - "mean" -> "intercept" (mean refers to intercept)
+        - "0.5*M+0.5*F-mean" -> "0.5*sex_M+0.5*sex_F-intercept"
+        
+        Parameters
+        ----------
+        contrast_expression : str
+            Original contrast expression potentially using categorical values.
+        
+        Returns
+        -------
+        str
+            Translated contrast expression using dummy column names.
+        """
+        translated = contrast_expression
+        
+        # First, translate "mean" to "intercept" (case-insensitive word boundary)
+        translated = re.sub(r'\bmean\b', 'intercept', translated, flags=re.IGNORECASE)
+        
+        # Sort by length (descending) to replace longer values first
+        # This avoids issues with substring replacement (e.g., "F" matching before "FAL")
+        sorted_mappings = sorted(
+            self.categorical_value_mapping.items(),
+            key=lambda x: len(x[0]),
+            reverse=True
+        )
+        
+        for original_value, dummy_column in sorted_mappings:
+            # Use word boundaries to avoid partial replacements
+            # Replace standalone values (not part of other identifiers)
+            pattern = r'\b' + re.escape(original_value) + r'\b'
+            translated = re.sub(pattern, dummy_column, translated)
+        
+        if translated != contrast_expression:
+            logger.debug(f"Translated contrast: '{contrast_expression}' -> '{translated}'")
+        
+        return translated
+    
     def add_contrast(
         self,
         contrast_expression: str,
@@ -247,11 +330,19 @@ class DesignMatrixBuilder:
         Add a contrast from a string expression.
         
         Uses nilearn's expression_to_contrast_vector for parsing.
+        Supports using original categorical values in contrast expressions.
+        The keyword "mean" is translated to "intercept" for user convenience.
         
         Parameters
         ----------
         contrast_expression : str
-            Contrast expression (e.g., "age", "group1-group2", "patients-controls").
+            Contrast expression. Examples:
+            - "age" (continuous regressor)
+            - "sex_M-sex_F" (dummy-coded categorical)
+            - "M-F" (using original categorical values)
+            - "patients-controls" (using original categorical values)
+            - "mean" (refers to intercept)
+            - "0.5*M+0.5*F-mean" (average vs intercept)
         name : str, optional
             Custom name for the contrast. If None, auto-generated.
         
@@ -263,8 +354,10 @@ class DesignMatrixBuilder:
         Examples
         --------
         >>> builder.add_contrast("age")  # Effect of age
-        >>> builder.add_contrast("patients-controls")  # Group difference
-        >>> builder.add_contrast("0.5*group1 + 0.5*group2")  # Average effect
+        >>> builder.add_contrast("sex_M-sex_F")  # Males vs Females (dummy-coded)
+        >>> builder.add_contrast("M-F")  # Males vs Females (original values)
+        >>> builder.add_contrast("0.5*M+0.5*F")  # Average effect across sexes
+        >>> builder.add_contrast("mean")  # Test the intercept
         """
         if self.design_matrix is None:
             raise ValueError("Must build design matrix before adding contrasts")
@@ -272,14 +365,17 @@ class DesignMatrixBuilder:
         # Get column names
         column_names = list(self.design_matrix.columns)
         
+        # Translate original categorical values to dummy column names
+        translated_expression = self._translate_contrast_expression(contrast_expression)
+        
         # Use nilearn's expression parser
         try:
             contrast_vector = expression_to_contrast_vector(
-                contrast_expression,
+                translated_expression,
                 column_names,
             )
         except Exception as e:
-            logger.error(f"Failed to parse contrast '{contrast_expression}': {e}")
+            logger.error(f"Failed to parse contrast '{contrast_expression}' (translated: '{translated_expression}'): {e}")
             raise ValueError(f"Invalid contrast expression: {contrast_expression}") from e
         
         # Generate contrast name if not provided

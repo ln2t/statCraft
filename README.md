@@ -1,9 +1,17 @@
-# StatCraft - Second-Level Neuroimaging Analysis Tool
+<div align="center">
+
+# StatCraft
+
+**Second-Level Neuroimaging Analysis Tool**
+
+[Features](#features) | [Installation](#installation) | [Quick Start](#quick-start) | [Configuration](#configuration) | [Outputs](#outputs) | [License](#license)  | [Citation](#citation) | [Acknowledgments](#acknowledgments)
+
+</div>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.html)
 
-A pip-installable Python tool for second-level neuroimaging analysis, supporting group-level comparisons, method comparisons, and statistical inference on brain images (e.g., fMRI, PET). The tool adheres to BIDS standards, leverages Nilearn, and produces reproducible, interpretable results with minimal user input.
+CLI tool for second-level neuroimaging analysis, supporting group-level comparisons, method comparisons, and statistical inference on brain images (e.g., fMRI, PET) or connectivity matrices. Uses flexible pattern matching for file discovery, leverages Nilearn, and produces reproducible, interpretable results with minimal user input.
 
 ## Features
 
@@ -13,18 +21,19 @@ A pip-installable Python tool for second-level neuroimaging analysis, supporting
   - Paired t-tests (within-subject comparisons)
   - General Linear Model (GLM) with custom design matrices
 
-- **BIDS-Compliant**
-  - Reads data following BIDS structure
-  - Supports filtering by BIDS entities (subject, session, task)
-  - Works with derivatives from fMRIPrep, SPM, FSL, etc.
+- **Flexible File Discovery**
+  - Pattern-based file matching with glob patterns
+  - Participant filtering by subject ID
+  - Works with derivatives from any first-level analysis
+  - Supports BIDS-like and custom file naming
 
 - **Statistical Inference**
-  - Uncorrected thresholding (default p < 0.001)
+  - Uncorrected thresholding
   - FDR (False Discovery Rate) correction
   - FWER (Family-Wise Error Rate) via Bonferroni
   - Permutation-based FWER correction
 
-- **Anatomical Annotation**
+- **Anatomical Annotation of Clusters**
   - Harvard-Oxford atlas (default)
   - AAL, Destrieux, Schaefer atlases
   - Custom atlas support
@@ -37,64 +46,131 @@ A pip-installable Python tool for second-level neuroimaging analysis, supporting
 
 ## Installation
 
-### From PyPI (recommended)
+We strongly recommend to use a virtual environment to work with this project
 
 ```bash
-pip install statcraft
-```
-
-### From Source
-
-```bash
-git clone https://github.com/arovai/StatCraft.git
-cd StatCraft
+git clone https://github.com/ln2t/statCraft.git
+cd statCraft
+python -m venv
+source venv/bin/activate
 pip install -e .
-```
-
-### Development Installation
-
-```bash
-git clone https://github.com/arovai/StatCraft.git
-cd StatCraft
-pip install -e ".[dev]"
 ```
 
 ## Quick Start
 
 ### Command Line Interface
 
+#### Usage Patterns
+
+StatCraft uses flexible pattern matching for file discovery. The idea is that you point to one or more directories and define filenaming patterns using wildcards, and this defines the data on which the second-level analysis will be performed.
+
+This allows the user to use this tool in a variety of first-level tools without any particular constraints on the output structure.
+
+Here are the typical usage, depending on the analysis type:
+
+**One-sample t-tests**
+
 ```bash
-# One-sample t-test
-statcraft /path/to/bids /path/to/output \
-    --derivatives /path/to/derivatives \
-    --analysis-type one-sample \
-    --task nback
-
-# Two-sample t-test (group comparison)
-statcraft /path/to/bids /path/to/output \
-    --derivatives /path/to/derivatives \
-    --analysis-type two-sample \
-    --group-column group
-
-# Paired t-test
-statcraft /path/to/bids /path/to/output \
-    --derivatives /path/to/derivatives \
-    --analysis-type paired \
-    --pair-by session \
-    --condition1 pre \
-    --condition2 post
-
-# Using a configuration file
-statcraft /path/to/bids /path/to/output \
-    --derivatives /path/to/derivatives \
-    --config config.yaml
-
-# Skip BIDS validation
-statcraft /path/to/bids /path/to/output \
-    --derivatives /path/to/derivatives \
-    --analysis-type one-sample \
-    --skip-bids-validator
+statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type one-sample --pattern "PATTERN"
 ```
+The pipeline will search for files matching `PATTERN` in the `<INPUT_DIR>` (exploring subfolders), perform the one-sample t-test, and save the results in `<OUTPUT_DIR>`.
+
+*Example:*
+
+A one-sample t-test on maps from first-level `beta1` maps with `task-motor` in the name:
+```bash
+statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type one-sample --pattern "*task-motor*beta1*.nii.gz"
+```
+
+**Smoothing Brain Map Data**
+
+When analyzing brain maps (e.g., statistical maps from first-level analyses), spatial smoothing can improve signal-to-noise ratio and increase statistical power. Use the `--smoothing` option to specify the smoothing strength in mm (FWHM - Full Width at Half Maximum):
+
+```bash
+statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type one-sample --pattern "PATTERN" --smoothing 6
+```
+
+The `--smoothing` parameter:
+- Accepts values in mm (e.g., 4, 6, 8)
+- Default is 0 (no smoothing)
+- Only applies to brain map analysis (NIfTI images), not connectivity matrices
+- Uses spatial Gaussian smoothing via nilearn's `SecondLevelModel`
+
+*Example with smoothing:*
+
+```bash
+statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type one-sample --pattern "*task-motor*beta1*.nii.gz" --smoothing 6
+```
+
+**Two-sample t-tests**
+
+The logic is similar as above, except that now one must specify two patterns to define the two groups to compare. We can also assign these groups custom names to ease the output filenaming:
+```bash
+statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type two-sample --patterns "Group1=PATTERN1 Group2=PATTERN2"
+```
+The strings `Group1` and `Group2` are arbitrary and are used in the output filenaming and in the analysis report.
+
+*Example:*
+
+If you have distinguishable names between the two groups you want to compare (e.g. `c001, c002, ...` for "controls" and `p001, p002, ...` for "patients"):
+```bash
+statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type two-sample --patterns "controls=sub-c*.nii.gz patients=sub-p*.nii.gz"
+```
+Of course, you can also use the GLM approach to have groups defined in a spreadsheet (see below), which has the advantage of being independent of your participant-naming choices.
+
+**Paired t-tests**
+
+This case is similar to the two-sample case except that one must provide a key to pair the data across the two groups. We do this by using the `--pair-by` argument:
+```bash
+statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type paired --patterns "Group1=PATTERN1 Group2=PATTERN2" --pair-by "ENTITY"
+```
+The pairing is done using BIDS-like `key-value` structures in filenames. For instance:
+- `--pair-by "sub"` (default): Files with `sub-001`, `sub-002`, etc. will be paired together
+- `--pair-by "ses"`: Files with `ses-pre`, `ses-post`, etc. will be paired together
+- `--pair-by "run"`: Files with `run-1`, `run-2`, etc. will be paired together
+
+Supports both BIDS abbreviations (`sub`, `ses`, `run`, `task`, etc.) and full names (`subject`, `session`, `run`, etc.).
+
+*Note:* `--pair-by` is optional, with default value `sub`.
+
+*Examples:*
+
+Compare maps from session 1 to session 2, paired by subjects (using default `--pair-by sub`):
+```bash
+statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type paired --patterns "session1=*ses-1*.nii.gz session2=*ses-2*.nii.gz"
+```
+
+Pair by session instead of subject (if you have multiple sessions and want to pair conditions within sessions):
+```bash
+statcraft /path/to/first_level_fmri_analyzes /path/to/output --analysis-type paired --patterns "pre=*ses-pre*.nii.gz post=*ses-post*.nii.gz" --pair-by "ses"
+```
+
+**General Linear Model (GLM)**
+
+For GLM analysis one must provide a design matrix. This is done by passing the `--participants-file`, which follows the structure of the `participants.tsv` file in a BIDS directory:
+
+```
+participant_id  sex age (other columns)
+sub-001 F 42  ...
+sub-CTL1 F 93  ...
+sub-abcd M 17  ...
+```
+By default, a design matrix is built using all the columns of this file. If only a subset of columns should be included, this can be achieved using the `--regressors` option. Moreover, columns that should be treated as categorical can be specified with `--categorical-regressors` (dummy-coded in the analysis). Finally, the contrast to compute is defined using the `--contrasts` argument.
+
+Here is a example featuring this functionality:
+```bash
+statcraft <INPUT_DIR> <OUTPUT_DIR> --analysis-type glm --participant-files <PATH_TO_PARTICIPANTS.TSV> --regressors sex age IQ --categorical-regressors sex --contrasts age M-F --pattern "*stat-effect*.nii.gz
+```
+In this example: columns `sex`, `age` and `IQ` are used to build the design matrix, with `sex` being treated as a categorical variable, and two contrasts are computed: the effect of `age` as well as the difference between `M` and `F` (assuming those are the labels in original `participants.tsv` file).
+
+*Notes*: 
+- By default, non-categorical variables are z-scored. To control this, one can use `--no-standardize-regressors`, e.g. `--no-standardize-regressors IQ`
+- An intercept is also added in the design matrix. Contrasts using the intercept can be built using the word `mean`, e.g. `--contrasts mean`. To remove the intercept, use `--no-intercept` option.
+- Non-trivial contrasts can be built using simple operands, e.g. `--contrasts 0.5*M+0.5*F-mean`
+
+## Configuration
+
+StatCraft can be configured via command-line arguments, configuration files (YAML/JSON), or Python dictionaries.
 
 ### Generate Default Configuration
 
@@ -102,41 +178,18 @@ statcraft /path/to/bids /path/to/output \
 statcraft --init-config config.yaml
 ```
 
-### Python API
-
-```python
-from statcraft import StatCraftPipeline
-
-# Create and run pipeline
-pipeline = StatCraftPipeline(
-    bids_dir="/path/to/bids",
-    output_dir="/path/to/output",
-    derivatives=["/path/to/derivatives"],
-    config={
-        "analysis_type": "one-sample",
-        "bids_filters": {"task": "nback"},
-        "contrasts": ["intercept"],
-    }
-)
-
-results = pipeline.run()
-```
-
-## Configuration
-
-StatCraft can be configured via command-line arguments, configuration files (YAML/JSON), or Python dictionaries.
-
 ### Example Configuration (YAML)
 
 ```yaml
 # Analysis type
 analysis_type: glm
 
-# BIDS filters
-bids_filters:
-  task: nback
-  session: baseline
-  space: MNI152NLin2009cAsym
+# Participant filtering (optional)
+participant_label: null  # Or: ["01", "02", "03"]
+
+# File pattern with embedded filters
+# Include task, session, space directly in the pattern
+file_pattern: "**/*task-nback*ses-baseline*space-MNI152*stat-effect*.nii.gz"
 
 # Design matrix columns (from participants.tsv)
 design_matrix:
@@ -144,6 +197,8 @@ design_matrix:
     - age
     - group
   add_intercept: true
+  categorical_columns:
+    - group
 
 # Contrasts to compute
 contrasts:
@@ -152,14 +207,15 @@ contrasts:
 
 # Paired test settings (for paired analysis)
 paired_test:
-  pair_by: session
-  condition1: pre
-  condition2: post
+  pair_by: sub
+  sample_patterns:
+    pre: "**/*ses-pre*.nii.gz"
+    post: "**/*ses-post*.nii.gz"
 
 # Statistical inference
 inference:
-  alpha: 0.05
-  height_threshold: 0.001
+  alpha_corrected: 0.05       # Significance for corrected thresholds
+  alpha_uncorrected: 0.001    # Cluster-forming threshold
   cluster_threshold: 10
   corrections:
     - uncorrected
@@ -169,45 +225,15 @@ inference:
 # Atlas for cluster annotation
 atlas: harvard_oxford
 
+# Smoothing for brain map analysis (in mm FWHM)
+# Use 0 for no smoothing (default)
+# Only applies to brain map analysis, not connectivity matrices
+smoothing_fwhm: 0
+
 # Output settings
 output:
   generate_report: true
   report_filename: report.html
-```
-
-## Data Requirements
-
-### BIDS Structure
-
-Your data should follow the BIDS standard:
-
-```
-dataset/
-├── participants.tsv          # Required: participant metadata
-├── participants.json
-├── rawdata/                   # BIDS rawdata (can be same as dataset root)
-│   ├── sub-01/
-│   │   └── ...
-│   └── sub-02/
-│       └── ...
-└── derivatives/
-    └── fmriprep/              # Or any other pipeline output
-        ├── sub-01/
-        │   └── func/
-        │       └── sub-01_task-nback_space-MNI152NLin2009cAsym_stat-effect_statmap.nii.gz
-        └── sub-02/
-            └── ...
-```
-
-### participants.tsv
-
-The `participants.tsv` file must contain a `participant_id` column and any variables used in the analysis:
-
-```tsv
-participant_id	age	group	sex
-sub-01	25	patient	M
-sub-02	30	control	F
-sub-03	28	patient	M
 ```
 
 ## Outputs
@@ -236,103 +262,9 @@ StatCraft generates:
 4. **Configuration** (`config.yaml`)
    - Complete configuration for reproducibility
 
-## API Reference
-
-### Core Classes
-
-- `StatCraftPipeline`: High-level pipeline for running complete analyses
-- `DataLoader`: BIDS-compliant data loading and validation
-- `DesignMatrixBuilder`: Design matrix construction
-- `SecondLevelGLM`: GLM fitting and contrast computation
-- `StatisticalInference`: Thresholding and cluster analysis
-- `ClusterAnnotator`: Anatomical labeling with atlases
-- `ReportGenerator`: HTML report generation
-
-### Example: Custom Analysis
-
-```python
-from statcraft.core.data_loader import DataLoader
-from statcraft.core.design_matrix import DesignMatrixBuilder
-from statcraft.core.glm import SecondLevelGLM
-from statcraft.core.inference import StatisticalInference
-from statcraft.core.annotation import ClusterAnnotator
-
-# Load data
-loader = DataLoader(
-    bids_dir="/path/to/bids",
-    derivatives=["/path/to/derivatives"],
-    output_dir="/path/to/output",
-)
-images = loader.get_images(bids_filters={"task": "nback"})
-valid_images, _ = loader.validate_mni_space(images)
-
-# Build design matrix
-participants = loader.get_participants_for_images(valid_images)
-dm_builder = DesignMatrixBuilder(participants)
-design_matrix = dm_builder.build_design_matrix(columns=["age", "group"])
-dm_builder.add_contrast("age")
-
-# Fit model
-image_paths = [str(img["path"]) for img in valid_images]
-glm = SecondLevelGLM()
-glm.fit(image_paths, design_matrix)
-glm.compute_contrast(dm_builder.contrasts["effectOfAge"], contrast_name="effectOfAge")
-
-# Run inference
-inference = StatisticalInference(alpha=0.05, height_threshold=0.001)
-inference.threshold_fdr(glm.get_stat_map("effectOfAge"), contrast_name="effectOfAge")
-
-# Annotate clusters
-annotator = ClusterAnnotator(atlas="harvard_oxford")
-annotated_table = annotator.annotate_cluster_table(
-    inference.get_cluster_table("effectOfAge", "fdr")
-)
-```
-
-## CLI Commands
-
-```bash
-# Run analysis
-statcraft run BIDS_DIR OUTPUT_DIR --derivatives DERIV_DIR [options]
-
-# Initialize configuration
-statcraft init-config OUTPUT_PATH [--format yaml|json]
-
-# Validate data
-statcraft validate BIDS_DIR [--derivatives DERIV_DIR]
-
-# Show version and dependencies
-statcraft info
-```
-
-## Dependencies
-
-- Python >= 3.8
-- nilearn >= 0.10.0
-- nibabel >= 4.0.0
-- numpy >= 1.20.0
-- pandas >= 1.3.0
-- scipy >= 1.7.0
-- matplotlib >= 3.4.0
-- seaborn >= 0.11.0
-- pybids >= 0.15.0
-- jinja2 >= 3.0.0
-- pyyaml >= 6.0
-- click >= 8.0.0
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0) - see the [LICENSE](LICENSE) file for details.
 
 ## Citation
 
@@ -343,7 +275,7 @@ If you use StatCraft in your research, please cite:
   title = {StatCraft: Second-Level Neuroimaging Analysis Tool},
   author = {StatCraft Contributors},
   year = {2024},
-  url = {https://github.com/arovai/StatCraft}
+  url = {https://github.com/ln2t/StatCraft}
 }
 ```
 
@@ -352,4 +284,3 @@ If you use StatCraft in your research, please cite:
 - [Nilearn](https://nilearn.github.io/) - Core neuroimaging functionality
 - [PyBIDS](https://bids-standard.github.io/pybids/) - BIDS data handling
 - [NiBabel](https://nipy.org/nibabel/) - NIfTI file handling
-Neuroimaging Second Level analysis software

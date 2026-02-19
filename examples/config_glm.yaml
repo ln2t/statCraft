@@ -4,14 +4,11 @@
 # Analysis type
 analysis_type: glm
 
-# BIDS filters for data selection
-bids_filters:
-  task: nback
-  session: baseline
-  space: MNI152NLin2009cAsym
+# Participant filtering (optional)
+participant_label: null
 
-# File pattern for finding images
-file_pattern: "**/sub-*_task-nback_space-MNI*_stat-effect_statmap.nii.gz"
+# File pattern for finding images - include filters in pattern
+file_pattern: "**/*task-nback*ses-baseline*space-MNI*stat-effect*.nii.gz"
 
 # Design matrix specification
 # Columns must exist in participants.tsv

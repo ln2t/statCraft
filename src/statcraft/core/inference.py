@@ -1447,6 +1447,7 @@ class ConnectivityInference:
         target_vars = connectivity_data
         
         logger.info(f"  Running {n_perm} permutations...")
+        print(f"\n>>> Performing permutation testing ({n_perm} permutations). This may take a while...")
         
         # Run permuted_ols with dict output to get null distribution
         try:
@@ -1459,7 +1460,7 @@ class ConnectivityInference:
                 two_sided_test=self.two_sided,
                 random_state=random_state,
                 n_jobs=n_jobs,
-                verbose=1 if logger.level <= 20 else 0,  # verbose if INFO or lower
+                verbose=0,  # suppress nilearn's verbose output
                 output_type='dict',
             )
         except Exception as e:
@@ -1598,7 +1599,15 @@ class ConnectivityInference:
         
         data_dir.mkdir(parents=True, exist_ok=True)
         tables_dir.mkdir(parents=True, exist_ok=True)
-        null_dist_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Check if there are any non-empty null distributions
+        has_null_dists = any(
+            null_dist is not None and len(null_dist) > 0
+            for corrections in self.null_distributions.values()
+            for null_dist in corrections.values()
+        )
+        if has_null_dists:
+            null_dist_dir.mkdir(parents=True, exist_ok=True)
         
         saved_files = {}
         

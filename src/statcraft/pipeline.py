@@ -85,6 +85,10 @@ class StatCraftPipeline:
         Paths to derivative folders containing images.
     config : Config, str, Path, or dict, optional
         Configuration (Config object, path to config file, or dict).
+    participants_file : str or Path, optional
+        Path to a custom participants.tsv file. If not provided, will look for
+        participants.tsv in bids_dir. Useful when bids_dir is directly a
+        derivatives folder without participants.tsv.
     
     Attributes
     ----------
@@ -108,10 +112,12 @@ class StatCraftPipeline:
         output_dir: Union[str, Path],
         derivatives: List[Union[str, Path]],
         config: Optional[Union[Config, str, Path, Dict]] = None,
+        participants_file: Optional[Union[str, Path]] = None,
     ):
         self.bids_dir = Path(bids_dir)
         self.output_dir = Path(output_dir)
         self.derivatives = [Path(d) for d in derivatives]
+        self.participants_file = Path(participants_file) if participants_file else None
         
         # Load configuration
         if config is None:
@@ -130,12 +136,16 @@ class StatCraftPipeline:
         logger.info(f"BIDS directory: {self.bids_dir}")
         logger.info(f"Output directory: {self.output_dir}")
         logger.info(f"Derivatives: {self.derivatives}")
+        if self.participants_file:
+            logger.info(f"Participants file: {self.participants_file}")
         
         # Initialize components
         self.data_loader = DataLoader(
             bids_dir=self.bids_dir,
             derivatives=self.derivatives,
             output_dir=self.output_dir,
+            participants_file=self.participants_file,
+            analysis_type=self.config.get("analysis_type", "glm"),
         )
         
         self.glm: Optional[SecondLevelGLM] = None
@@ -183,7 +193,7 @@ class StatCraftPipeline:
     
     def load_data(
         self,
-        bids_filters: Optional[Dict] = None,
+        participant_label: Optional[List[str]] = None,
         pattern: Optional[str] = None,
         exclude_pattern: Optional[str] = None,
     ) -> List[Dict]:
@@ -192,8 +202,8 @@ class StatCraftPipeline:
 
         Parameters
         ----------
-        bids_filters : dict, optional
-            BIDS entity filters. Uses config if not provided.
+        participant_label : list of str, optional
+            List of participant labels to include. Uses config if not provided.
         pattern : str, optional
             Glob pattern for finding files.
         exclude_pattern : str, optional
@@ -206,11 +216,9 @@ class StatCraftPipeline:
         """
         logger.info("Loading data...")
 
-        # Use config filters if not provided
-        if bids_filters is None:
-            bids_filters = self.config.get("bids_filters", {})
-            # Remove None values
-            bids_filters = {k: v for k, v in bids_filters.items() if v is not None}
+        # Use config participant_label if not provided
+        if participant_label is None:
+            participant_label = self.config.get("participant_label")
 
         if pattern is None:
             pattern = self.config.get("file_pattern")
@@ -220,7 +228,7 @@ class StatCraftPipeline:
 
         # Get images
         images = self.data_loader.get_images(
-            bids_filters=bids_filters,
+            participant_label=participant_label,
             pattern=pattern,
             exclude_pattern=exclude_pattern,
         )
@@ -228,14 +236,14 @@ class StatCraftPipeline:
         if not images:
             raise ValueError("No images found matching the specified criteria")
 
-        # Log discovered files before any processing
-        logger.info(f"Discovered {len(images)} image files:")
-        for i, img in enumerate(images, 1):
-            logger.info(f"  [{i}] {img['path']}")
+        # Log discovered files summary (detailed output via print statement below)
+        logger.info(f"Discovered {len(images)} image files matching criteria")
 
-        # Also output to console/stdout for immediate visibility
+        # Output to console/stdout for immediate visibility with limited file list
         print(f"\nDiscovered {len(images)} image files matching criteria:")
         print("=" * 80)
+        # Prepare display list with limited output for large file counts
+        file_list = []
         for i, img in enumerate(images, 1):
             # Show relevant BIDS entities if available
             entities_str = ""
@@ -250,7 +258,8 @@ class StatCraftPipeline:
                     parts.append(f"task-{entities['task']}")
                 if parts:
                     entities_str = f" ({', '.join(parts)})"
-            print(f"  [{i:3d}] {img['path']}{entities_str}")
+            file_list.append(f"[{i:3d}] {img['path']}{entities_str}")
+        _print_file_list_limited(file_list, prefix="  ")
         print("=" * 80)
         print()
 
@@ -348,7 +357,7 @@ class StatCraftPipeline:
 
     def load_connectivity_data(
         self,
-        bids_filters: Optional[Dict] = None,
+        participant_label: Optional[List[str]] = None,
         pattern: Optional[str] = None,
         exclude_pattern: Optional[str] = None,
     ) -> List[Dict]:
@@ -357,8 +366,8 @@ class StatCraftPipeline:
 
         Parameters
         ----------
-        bids_filters : dict, optional
-            BIDS entity filters.
+        participant_label : list of str, optional
+            List of participant labels to include.
         pattern : str, optional
             Glob pattern for finding files.
         exclude_pattern : str, optional
@@ -371,10 +380,9 @@ class StatCraftPipeline:
         """
         logger.info("Loading connectivity data...")
 
-        # Use config filters if not provided
-        if bids_filters is None:
-            bids_filters = self.config.get("bids_filters", {})
-            bids_filters = {k: v for k, v in bids_filters.items() if v is not None}
+        # Use config participant_label if not provided
+        if participant_label is None:
+            participant_label = self.config.get("participant_label")
 
         if pattern is None:
             pattern = self.config.get("file_pattern", "**/*.npy")
@@ -384,7 +392,7 @@ class StatCraftPipeline:
 
         # Get .npy files
         images = self.data_loader.get_images(
-            bids_filters=bids_filters,
+            participant_label=participant_label,
             pattern=pattern,
             exclude_pattern=exclude_pattern,
             extension=".npy",
@@ -393,15 +401,15 @@ class StatCraftPipeline:
         if not images:
             raise ValueError("No connectivity matrices found matching the specified criteria")
 
-        # Log discovered files
-        logger.info(f"Discovered {len(images)} connectivity matrix files:")
-        for i, img in enumerate(images, 1):
-            logger.info(f"  [{i}] {img['path']}")
+        # Log discovered files summary (detailed output via print statement below)
+        logger.info(f"Discovered {len(images)} connectivity matrix files matching criteria")
 
         print(f"\nDiscovered {len(images)} connectivity matrix files:")
         print("=" * 80)
-        for i, img in enumerate(images, 1):
-            print(f"  [{i:3d}] {img['path']}")
+        # Prepare display list with limited output for large file counts
+        file_list = [f"[{idx}/{len(images)}] {img['path']}"
+                     for idx, img in enumerate(images, 1)]
+        _print_file_list_limited(file_list, prefix="  ")
         print("=" * 80)
         print()
 
@@ -457,8 +465,12 @@ class StatCraftPipeline:
         
         analysis_type = self.config.get("analysis_type", "glm")
         
-        # Get participant data
-        participants = self.data_loader.get_participants_for_images(self._images)
+        # Get participant data only if it's required for this analysis type
+        requires_participants = analysis_type in ["glm", "two-sample", "two_sample"]
+        participants = None
+        
+        if requires_participants:
+            participants = self.data_loader.get_participants_for_images(self._images)
         
         self.design_matrix_builder = DesignMatrixBuilder(participants)
         
@@ -500,6 +512,13 @@ class StatCraftPipeline:
             dm_config = self.config.get("design_matrix", {})
             columns = columns or dm_config.get("columns", [])
             
+            # Handle "all" keyword: use all columns from participants.tsv
+            if columns == "all":
+                # Get all columns except 'participant_id' (and similar standard columns)
+                excluded_cols = {'participant_id', 'subject_id', 'sub', 'subject'}
+                columns = [c for c in participants.columns if c.lower() not in excluded_cols]
+                logger.info(f"Using all columns from participants.tsv: {columns}")
+            
             if not columns:
                 # Default: one-sample (intercept only)
                 self._design_matrix = self.design_matrix_builder.build_one_sample_design_matrix(
@@ -511,6 +530,7 @@ class StatCraftPipeline:
                     add_intercept=dm_config.get("add_intercept", True),
                     categorical_columns=dm_config.get("categorical_columns"),
                     standardize_continuous=dm_config.get("standardize_continuous", True),
+                    no_standardize_columns=dm_config.get("no_standardize_columns"),
                 )
         
         logger.info(f"Design matrix shape: {self._design_matrix.shape}")
@@ -547,9 +567,16 @@ class StatCraftPipeline:
         
         if not contrast_specs:
             # Default contrast: test intercept / mean
+            # Check if intercept exists in the design matrix
+            if "intercept" not in self._design_matrix.columns:
+                raise ValueError(
+                    "Cannot use default 'mean' contrast when --no-intercept is specified. "
+                    "Please provide explicit contrast(s) using --contrasts (e.g., --contrasts age sex_M-sex_F). "
+                    "The default contrast tests the intercept, which is not present when --no-intercept is used."
+                )
             logger.info("No contrasts specified, using default (intercept)")
             n_cols = len(self._design_matrix.columns)
-            self.design_matrix_builder.contrasts["mean_effect"] = np.array(
+            self.design_matrix_builder.contrasts["effectOfMean"] = np.array(
                 [1.0] + [0.0] * (n_cols - 1)
             )
         else:
@@ -668,7 +695,7 @@ class StatCraftPipeline:
         # Create GLM
         # Use smoothing_fwhm from parameter, or fall back to config value
         if smoothing_fwhm is None:
-            smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 5.0)
+            smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 0)
 
         self.glm = SecondLevelGLM(
             mask=mask,
@@ -1013,7 +1040,7 @@ class StatCraftPipeline:
 
         # Get preprocessing parameters
         glm_config = self.config.get("glm", {})
-        smoothing_fwhm = glm_config.get("smoothing_fwhm", 5.0)
+        smoothing_fwhm = glm_config.get("smoothing_fwhm", 0)
         zscore_applied = bool(self.config.get("zscore", False))
         scaling_applied = self.config.get("scaling_pattern", None)
         if scaling_applied and self.config.get("scaling_key"):
@@ -1567,16 +1594,12 @@ class StatCraftPipeline:
         if config_dict.get('zscore'):
             cmd_parts.append("--zscore")
 
-        # Add BIDS filters
-        bids_filters = config_dict.get('bids_filters', {})
-        if bids_filters.get('task'):
-            cmd_parts.append(f"--task {bids_filters['task']}")
-        if bids_filters.get('session'):
-            cmd_parts.append(f"--session {bids_filters['session']}")
-        if bids_filters.get('subject'):
-            subjects = bids_filters['subject'] if isinstance(bids_filters['subject'], list) else [bids_filters['subject']]
-            for subj in subjects:
-                cmd_parts.append(f"--subject {subj}")
+        # Add participant filter
+        participant_label = config_dict.get('participant_label')
+        if participant_label:
+            labels = participant_label if isinstance(participant_label, list) else [participant_label]
+            for label in labels:
+                cmd_parts.append(f"--participant-label {label}")
 
         # Add group comparison options
         if config_dict.get('group_comparison', {}).get('group_column'):
@@ -1618,15 +1641,11 @@ class StatCraftPipeline:
         if config_dict.get('cluster_overlap_threshold') is not None and config_dict['cluster_overlap_threshold'] != 5.0:
             cmd_parts.append(f"--cluster-overlap-threshold {config_dict['cluster_overlap_threshold']}")
 
-        # Add verbosity
+        # Verbosity is always added if needed
         if config_dict.get('verbose'):
             verbose_level = config_dict['verbose']
             if verbose_level > 0:
                 cmd_parts.append('-' + 'v' * verbose_level)
-
-        # Add report flag
-        if config_dict.get('output', {}).get('generate_report') is False:
-            cmd_parts.append("--no-report")
 
         return ' '.join(cmd_parts)
 
@@ -1786,11 +1805,9 @@ class StatCraftPipeline:
         if hasattr(self, '_runtime_zscore') and self._runtime_zscore:
             config_dict['zscore'] = self._runtime_zscore
 
-        if hasattr(self, '_runtime_bids_filters') and self._runtime_bids_filters is not None:
-            # Merge runtime BIDS filters with config BIDS filters
-            if 'bids_filters' not in config_dict:
-                config_dict['bids_filters'] = {}
-            config_dict['bids_filters'].update(self._runtime_bids_filters)
+        if hasattr(self, '_runtime_participant_label') and self._runtime_participant_label is not None:
+            # Use runtime participant_label
+            config_dict['participant_label'] = self._runtime_participant_label
 
         # Generate equivalent CLI command
         cli_cmd = self._generate_cli_command(config_dict)
@@ -2907,8 +2924,12 @@ class StatCraftPipeline:
         # Normalize the entity key (e.g., "sub" -> "subject")
         pair_by = self._normalize_bids_entity_key(pair_by_input)
 
-        logger.info(f"Pairing by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}')")
-        print(f"\nPairing files by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}')")
+        if pair_by_input != "sub":
+            logger.info(f"Pairing by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}') [CUSTOM PAIRING]")
+            print(f"\nPairing files by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}') [CUSTOM PAIRING]")
+        else:
+            logger.info(f"Pairing by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}') [DEFAULT]")
+            print(f"\nPairing files by BIDS entity: '{pair_by_input}' (normalized to '{pair_by}') [DEFAULT]")
         print("=" * 80)
 
         # Create pairs based on the pairing entity
@@ -3155,7 +3176,7 @@ class StatCraftPipeline:
 
         # Run one-sample t-test
         # Get smoothing_fwhm from config
-        smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 5.0)
+        smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 0)
         self.glm = SecondLevelGLM(smoothing_fwhm=smoothing_fwhm)
         results = self.glm.one_sample_ttest(diff_images, contrast_name=contrast_name)
 
@@ -3344,7 +3365,7 @@ class StatCraftPipeline:
         # Fit GLM
         logger.info("Fitting GLM...")
         # Get smoothing_fwhm from config
-        smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 5.0)
+        smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 0)
         self.glm = SecondLevelGLM(smoothing_fwhm=smoothing_fwhm)
         self.glm.fit(self._image_paths, self._design_matrix)
 
@@ -3416,7 +3437,7 @@ class StatCraftPipeline:
 
     def run(
         self,
-        bids_filters: Optional[Dict] = None,
+        participant_label: Optional[List[str]] = None,
         pattern: Optional[str] = None,
         exclude_pattern: Optional[Union[str, Dict[str, str]]] = None,
         sample_patterns: Optional[Dict[str, str]] = None,
@@ -3430,8 +3451,8 @@ class StatCraftPipeline:
 
         Parameters
         ----------
-        bids_filters : dict, optional
-            BIDS entity filters.
+        participant_label : list of str, optional
+            List of participant labels to include (without 'sub-' prefix).
         pattern : str, optional
             Glob pattern for finding files (for one-sample tests).
         exclude_pattern : str or dict, optional
@@ -3453,7 +3474,7 @@ class StatCraftPipeline:
         mask : str, optional
             Brain mask pattern for z-scoring. Required when zscore=True.
             Format: '/path/to/fmriprep/sub-*/*/*brain*mask.nii.gz'.
-            Uses BIDS entity matching to find the correct mask for each image.
+            Uses entity matching to find the correct mask for each image.
 
         Returns
         -------
@@ -3534,7 +3555,7 @@ class StatCraftPipeline:
 
         # Standard single-pattern pipeline
         # Step 1: Load data
-        self.load_data(bids_filters=bids_filters, pattern=pattern, exclude_pattern=exclude_pattern)
+        self.load_data(participant_label=participant_label, pattern=pattern, exclude_pattern=exclude_pattern)
 
         # Store original images before normalization (for saving unscaled versions)
         self._original_valid_images = self._images.copy() if hasattr(self, '_images') else None
@@ -3611,7 +3632,7 @@ class StatCraftPipeline:
 
     def run_connectivity_analysis(
         self,
-        bids_filters: Optional[Dict] = None,
+        participant_label: Optional[List[str]] = None,
         pattern: Optional[str] = None,
         exclude_pattern: Optional[str] = None,
         sample_patterns: Optional[Dict[str, str]] = None,
@@ -3624,8 +3645,8 @@ class StatCraftPipeline:
 
         Parameters
         ----------
-        bids_filters : dict, optional
-            BIDS entity filters.
+        participant_label : list of str, optional
+            List of participant labels to include.
         pattern : str, optional
             Glob pattern for finding .npy files (default: '**/*.npy').
         exclude_pattern : str, optional
@@ -3648,7 +3669,7 @@ class StatCraftPipeline:
 
         # Load connectivity data
         self.load_connectivity_data(
-            bids_filters=bids_filters,
+            participant_label=participant_label,
             pattern=pattern,
             exclude_pattern=exclude_pattern,
         )
@@ -3721,22 +3742,15 @@ class StatCraftPipeline:
                 contrast_name=contrast_name,
             )
         else:
-            # GLM analysis
+            # GLM analysis - compute all contrasts
             self.connectivity_glm.fit(matrices, self._design_matrix)
-            contrast_name = list(self.design_matrix_builder.contrasts.keys())[0]
-            contrast_vector = self.design_matrix_builder.contrasts[contrast_name]
-            results = self.connectivity_glm.compute_contrast(
-                contrast_vector,
-                contrast_name=contrast_name,
-            )
+            for contrast_name, contrast_vector in self.design_matrix_builder.contrasts.items():
+                results = self.connectivity_glm.compute_contrast(
+                    contrast_vector,
+                    contrast_name=contrast_name,
+                )
 
-        # Get result info
-        glm_result = self.connectivity_glm.results[contrast_name]
-        t_matrix = glm_result['maps']['t_matrix']
-        p_matrix = glm_result['maps']['p_matrix']
-        df = glm_result['df']
-
-        # Run inference
+        # Run inference for all contrasts
         logger.info("Running statistical inference on edges...")
         self.connectivity_inference = ConnectivityInference(
             alpha_corrected=self.config.get("alpha_corrected", 0.05),
@@ -3755,50 +3769,56 @@ class StatCraftPipeline:
                 corrections = list(corrections) + ["fwer_perm"]
                 logger.info(f"Added permutation testing to corrections: {corrections}")
         
-        for correction in corrections:
-            if correction == "fdr":
-                self.connectivity_inference.threshold_fdr(
-                    t_matrix, p_matrix, df,
-                    contrast_name=contrast_name,
-                )
-            elif correction == "bonferroni":
-                self.connectivity_inference.threshold_bonferroni(
-                    t_matrix, p_matrix, df,
-                    contrast_name=contrast_name,
-                )
-            elif correction == "uncorrected":
-                self.connectivity_inference.threshold_uncorrected(
-                    t_matrix, p_matrix, df,
-                    contrast_name=contrast_name,
-                )
-            elif correction in ["fwer_perm", "permutation"]:
-                # Permutation testing for connectivity using nilearn's permuted_ols
-                logger.info(f"Running permutation testing for connectivity analysis...")
-                n_perm = inf_config.get("n_permutations", 1000)
-                n_jobs = inf_config.get("n_jobs", 1)
-                random_state = inf_config.get("random_state", None)
-                
-                # Get vectorized connectivity data from the GLM
-                connectivity_data = self.connectivity_glm._matrices
-                if connectivity_data is None:
-                    raise ValueError("Connectivity GLM has no stored data. Cannot run permutation testing.")
-                
-                try:
-                    self.connectivity_inference.threshold_fwer_permutation(
+        # Run inference for each contrast
+        for contrast_name, glm_result in self.connectivity_glm.results.items():
+            t_matrix = glm_result['maps']['t_matrix']
+            p_matrix = glm_result['maps']['p_matrix']
+            df = glm_result['df']
+            
+            for correction in corrections:
+                if correction == "fdr":
+                    self.connectivity_inference.threshold_fdr(
                         t_matrix, p_matrix, df,
-                        connectivity_data=connectivity_data,
-                        design_matrix=self._design_matrix.values if self._design_matrix is not None else np.array([]),
-                        contrast_vector=self.design_matrix_builder.contrasts.get(contrast_name, np.array([])) if self.design_matrix_builder else np.array([]),
-                        n_perm=n_perm,
                         contrast_name=contrast_name,
-                        n_jobs=n_jobs,
-                        random_state=random_state,
                     )
-                    logger.info(f"✓ Permutation test completed successfully for connectivity")
-                except Exception as e:
-                    logger.warning(f"Permutation test failed for connectivity: {e}")
-                    import traceback
-                    traceback.print_exc()
+                elif correction == "bonferroni":
+                    self.connectivity_inference.threshold_bonferroni(
+                        t_matrix, p_matrix, df,
+                        contrast_name=contrast_name,
+                    )
+                elif correction == "uncorrected":
+                    self.connectivity_inference.threshold_uncorrected(
+                        t_matrix, p_matrix, df,
+                        contrast_name=contrast_name,
+                    )
+                elif correction in ["fwer_perm", "permutation"]:
+                    # Permutation testing for connectivity using nilearn's permuted_ols
+                    logger.info(f"Running permutation testing for connectivity analysis ({contrast_name})...")
+                    n_perm = inf_config.get("n_permutations", 1000)
+                    n_jobs = inf_config.get("n_jobs", 1)
+                    random_state = inf_config.get("random_state", None)
+                    
+                    # Get vectorized connectivity data from the GLM
+                    connectivity_data = self.connectivity_glm._matrices
+                    if connectivity_data is None:
+                        raise ValueError("Connectivity GLM has no stored data. Cannot run permutation testing.")
+                    
+                    try:
+                        self.connectivity_inference.threshold_fwer_permutation(
+                            t_matrix, p_matrix, df,
+                            connectivity_data=connectivity_data,
+                            design_matrix=self._design_matrix.values if self._design_matrix is not None else np.array([]),
+                            contrast_vector=self.design_matrix_builder.contrasts.get(contrast_name, np.array([])) if self.design_matrix_builder else np.array([]),
+                            n_perm=n_perm,
+                            contrast_name=contrast_name,
+                            n_jobs=n_jobs,
+                            random_state=random_state,
+                        )
+                        logger.info(f"✓ Permutation test completed successfully for connectivity ({contrast_name})")
+                    except Exception as e:
+                        logger.warning(f"Permutation test failed for connectivity ({contrast_name}): {e}")
+                        import traceback
+                        traceback.print_exc()
 
 
         # Save results with BIDS naming
@@ -3826,7 +3846,9 @@ class StatCraftPipeline:
         # Generate report
         output_config = self.config.get("output", {})
         if output_config.get("generate_report", True):
-            report_path = self._generate_connectivity_report(contrast_name)
+            # Generate reports for all contrasts
+            contrast_names = list(self.connectivity_glm.results.keys())
+            report_path = self._generate_connectivity_report(contrast_names)
             saved_files["report"] = report_path
 
         logger.info("Connectivity analysis completed successfully!")
@@ -3839,25 +3861,33 @@ class StatCraftPipeline:
             "saved_files": saved_files,
         }
 
-    def _generate_connectivity_report(self, contrast_name: str) -> Path:
+    def _generate_connectivity_report(self, contrast_names: Union[str, List[str]]) -> Path:
         """
         Generate HTML report for connectivity analysis.
 
         Parameters
         ----------
-        contrast_name : str
-            Name of the contrast analyzed.
+        contrast_names : str or list of str
+            Name(s) of the contrast(s) analyzed.
 
         Returns
         -------
         Path
             Path to saved report.
         """
-        logger.info("Generating connectivity analysis report...")
+        # Convert single contrast to list
+        if isinstance(contrast_names, str):
+            contrast_names = [contrast_names]
+        
+        logger.info(f"Generating connectivity analysis report for {len(contrast_names)} contrast(s)...")
 
         # Initialize report
+        title = f"StatCraft Connectivity Analysis"
+        if len(contrast_names) == 1:
+            title = f"{title}: {contrast_names[0]}"
+        
         self.report = ReportGenerator(
-            title=f"StatCraft Connectivity Analysis: {contrast_name}",
+            title=title,
             output_dir=self.output_dir,
         )
 
@@ -3870,6 +3900,7 @@ class StatCraftPipeline:
             <p><strong>Number of ROIs:</strong> {self.connectivity_glm.n_rois}</p>
             <p><strong>Number of Edges:</strong> {self.connectivity_glm.n_edges}</p>
             <p><strong>Atlas:</strong> {self._connectivity_metadata.get('atlas_name', 'Not specified')}</p>
+            <p><strong>Contrasts:</strong> {', '.join(contrast_names)}</p>
             """,
             section_type="html",
             level=1,
@@ -3885,76 +3916,89 @@ class StatCraftPipeline:
                 level=2,
             )
 
-        # Add results for each correction
-        glm_result = self.connectivity_glm.results[contrast_name]
-        t_matrix_unthresholded = glm_result['maps']['t_matrix']
-        p_matrix = glm_result['maps']['p_matrix']
-        df = glm_result['df']
-
         if self.connectivity_inference is None:
             logger.error("Connectivity inference not initialized")
             raise RuntimeError("Connectivity inference not initialized")
 
-        for i, (correction, threshold) in enumerate(self.connectivity_inference.threshold_values.get(contrast_name, {}).items()):
-            edge_table = self.connectivity_inference.edge_tables.get(contrast_name, {}).get(correction)
-            # Get the thresholded matrix for this correction method
-            thresholded_dict = self.connectivity_inference.thresholded_matrices.get(contrast_name, {})
-            if correction in thresholded_dict:
-                t_matrix_thresholded = thresholded_dict[correction]
-            else:
-                t_matrix_thresholded = t_matrix_unthresholded
+        # Add results for each contrast
+        for contrast_name in contrast_names:
+            # Add contrast header if multiple contrasts
+            if len(contrast_names) > 1:
+                self.report.add_section(
+                    f"Contrast: {contrast_name}",
+                    "",
+                    section_type="html",
+                    level=2,
+                )
+            
+            glm_result = self.connectivity_glm.results[contrast_name]
+            t_matrix_unthresholded = glm_result['maps']['t_matrix']
+            p_matrix = glm_result['maps']['p_matrix']
+            df = glm_result['df']
 
-            # Debug: log matrix properties
-            n_nonzero = np.count_nonzero(t_matrix_thresholded)
-            nonzero_vals = t_matrix_thresholded[t_matrix_thresholded != 0]
-            if len(nonzero_vals) > 0:
-                logger.info(f"Report {correction}: {n_nonzero} non-zero edges, "
-                           f"range=[{nonzero_vals.min():.3f}, {nonzero_vals.max():.3f}]")
-            else:
-                logger.info(f"Report {correction}: 0 non-zero edges (all thresholded out)")
+            for i, (correction, threshold) in enumerate(self.connectivity_inference.threshold_values.get(contrast_name, {}).items()):
+                edge_table = self.connectivity_inference.edge_tables.get(contrast_name, {}).get(correction)
+                # Get the thresholded matrix for this correction method
+                thresholded_dict = self.connectivity_inference.thresholded_matrices.get(contrast_name, {})
+                if correction in thresholded_dict:
+                    t_matrix_thresholded = thresholded_dict[correction]
+                else:
+                    t_matrix_thresholded = t_matrix_unthresholded
 
-            coordinates = None
-            roi_names = None
-            atlas_name = None
-            if self._connectivity_metadata is not None:
-                coordinates = self._connectivity_metadata.get('roi_coordinates')
-                roi_names = self._connectivity_metadata.get('roi_names')
-                atlas_name = self._connectivity_metadata.get('atlas_name')
+                # Debug: log matrix properties
+                n_nonzero = np.count_nonzero(t_matrix_thresholded)
+                nonzero_vals = t_matrix_thresholded[t_matrix_thresholded != 0]
+                if len(nonzero_vals) > 0:
+                    logger.info(f"Report {correction}: {n_nonzero} non-zero edges, "
+                               f"range=[{nonzero_vals.min():.3f}, {nonzero_vals.max():.3f}]")
+                else:
+                    logger.info(f"Report {correction}: 0 non-zero edges (all thresholded out)")
 
-            # Pass unthresholded matrix only for the first correction to avoid redundancy
-            unthresholded_for_display = t_matrix_unthresholded if i == 0 else None
+                coordinates = None
+                roi_names = None
+                atlas_name = None
+                if self._connectivity_metadata is not None:
+                    coordinates = self._connectivity_metadata.get('roi_coordinates')
+                    roi_names = self._connectivity_metadata.get('roi_names')
+                    atlas_name = self._connectivity_metadata.get('atlas_name')
 
-            self.report.add_connectivity_results_section(
-                t_matrix=t_matrix_thresholded,
-                p_matrix=p_matrix,
-                contrast_name=contrast_name,
-                correction=correction,
-                threshold=threshold,
-                coordinates=coordinates,
-                roi_names=roi_names,
-                atlas_name=atlas_name,
-                edge_table=edge_table,
-                df=df,
-                t_matrix_unthresholded=unthresholded_for_display,
-            )
+                # Pass unthresholded matrix only for the first correction to avoid redundancy
+                unthresholded_for_display = t_matrix_unthresholded if i == 0 else None
 
-            # Add permutation null distribution plot if available
-            if correction == "fwer_perm":
-                null_dist = self.connectivity_inference.null_distributions.get(contrast_name, {}).get(correction)
-                if null_dist is not None:
-                    n_perm = len(null_dist)
-                    alpha = self.config.get("alpha_corrected", 0.05)
-                    self.report.add_permutation_null_distribution(
-                        h0_distribution=null_dist,
-                        alpha=alpha,
-                        contrast_name=contrast_name,
-                        n_perm=n_perm,
-                    )
-                    logger.info(f"Added null distribution plot for {contrast_name} (FWER permutation)")
+                self.report.add_connectivity_results_section(
+                    t_matrix=t_matrix_thresholded,
+                    p_matrix=p_matrix,
+                    contrast_name=contrast_name,
+                    correction=correction,
+                    threshold=threshold,
+                    coordinates=coordinates,
+                    roi_names=roi_names,
+                    atlas_name=atlas_name,
+                    edge_table=edge_table,
+                    df=df,
+                    t_matrix_unthresholded=unthresholded_for_display,
+                )
+
+                # Add permutation null distribution plot if available
+                if correction == "fwer_perm":
+                    null_dist = self.connectivity_inference.null_distributions.get(contrast_name, {}).get(correction)
+                    if null_dist is not None:
+                        n_perm = len(null_dist)
+                        alpha = self.config.get("alpha_corrected", 0.05)
+                        self.report.add_permutation_null_distribution(
+                            h0_distribution=null_dist,
+                            alpha=alpha,
+                            contrast_name=contrast_name,
+                            n_perm=n_perm,
+                        )
+                        logger.info(f"Added null distribution plot for {contrast_name} (FWER permutation)")
 
         # Save report with BIDS-compatible naming
         bids_prefix = self._generate_bids_prefix()
-        report_filename = f"{bids_prefix}_contrast-{contrast_name}_report.html"
+        if len(contrast_names) == 1:
+            report_filename = f"{bids_prefix}_contrast-{contrast_names[0]}_report.html"
+        else:
+            report_filename = f"{bids_prefix}_report.html"
         report_path = self.report.save(report_filename)
         logger.info(f"Report saved to: {report_path}")
 

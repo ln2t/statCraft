@@ -4,16 +4,13 @@
 # Analysis type
 analysis_type: one-sample
 
-# BIDS filters for data selection
-bids_filters:
-  task: nback
-  session: null  # Include all sessions
-  subject: null  # Include all subjects
-  space: MNI152NLin2009cAsym
+# Participant filtering (optional)
+# Leave as null to include all participants
+participant_label: null  # Or list specific ones: ["01", "02", "03"]
 
 # File pattern for finding images in derivatives
-# Use glob patterns to match your specific file naming convention
-file_pattern: "**/sub-*_task-*_space-MNI152NLin2009cAsym_stat-effect_statmap.nii.gz"
+# Include task, session, space, and other filters directly in the pattern
+file_pattern: "**/*task-nback*space-MNI152NLin2009cAsym*stat-effect*.nii.gz"
 
 # Statistical inference settings
 inference:

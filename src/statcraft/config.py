@@ -19,13 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Default configuration values
 DEFAULT_CONFIG = {
-    # BIDS filters
-    "bids_filters": {
-        "task": None,
-        "session": None,
-        "subject": None,
-        "space": "MNI152NLin2009cAsym",
-    },
+    # Participant filter - list of participant labels to include
+    "participant_label": None,  # e.g., ["01", "02", "03"] or None for all
 
     # File pattern for finding images
     "file_pattern": None,
@@ -59,7 +54,7 @@ DEFAULT_CONFIG = {
 
     # Paired test settings
     "paired_test": {
-        "pair_by": None,  # e.g., "session"
+        "pair_by": None,  # BIDS entity for pairing (default: "sub" for subject). Supports abbreviations (sub, ses, run, etc.) or full names.
         "condition1": None,  # e.g., "pre"
         "condition2": None,  # e.g., "post"
         "sample_patterns": None,  # e.g., {"GS": "*GS*cvr*.nii.gz", "SSS": "*SSS*cvr*.nii.gz"}
@@ -93,7 +88,7 @@ DEFAULT_CONFIG = {
 
     # GLM settings
     "glm": {
-        "smoothing_fwhm": 5.0,  # Smoothing kernel FWHM in mm (set to None to disable)
+        "smoothing_fwhm": 0,  # Smoothing kernel FWHM in mm (set to 0 or None to disable)
     },
 
     # Atlas for cluster annotation
@@ -233,8 +228,9 @@ class Config:
         # Validate paired test settings
         if self.data["analysis_type"] == "paired":
             paired = self.data["paired_test"]
-            if not paired.get("pair_by"):
-                errors.append("paired_test.pair_by is required for paired analysis")
+            # pair_by is optional, defaults to "sub" (subject)
+            # if not paired.get("pair_by"):
+            #     errors.append("paired_test.pair_by is required for paired analysis")
 
             # Check if using old method (condition1/condition2) or new method (sample_patterns)
             has_sample_patterns = paired.get("sample_patterns") is not None
@@ -339,10 +335,8 @@ class Config:
         
         lines.append(f"\nAnalysis Type: {self.data['analysis_type']}")
         
-        lines.append("\nBIDS Filters:")
-        for k, v in self.data["bids_filters"].items():
-            if v is not None:
-                lines.append(f"  {k}: {v}")
+        if self.data.get("participant_label"):
+            lines.append(f"\nParticipant Filter: {self.data['participant_label']}")
         
         if self.data["contrasts"]:
             lines.append(f"\nContrasts: {len(self.data['contrasts'])}")
@@ -414,9 +408,9 @@ def create_default_config(output_path: Union[str, Path]) -> Path:
 # USAGE:
 #   statcraft --config this_file.yaml
 #   OR
-#   statcraft /path/to/bids /path/to/output -d /path/to/derivatives --config this_file.yaml
+#   statcraft /path/to/dataset /path/to/output -d /path/to/derivatives --config this_file.yaml
 #
-# For more information, visit: https://github.com/arovai/StatCraft
+# For more information, visit: https://github.com/ln2t/StatCraft
 # ===============================================================================
 
 # -------------------------------------------------------------------------------
@@ -425,8 +419,8 @@ def create_default_config(output_path: Union[str, Path]) -> Path:
 # These can be specified in the config file OR as command-line arguments.
 # CLI arguments take precedence over config file values.
 
-# Path to BIDS rawdata directory
-# CLI equivalent: BIDS_DIR (positional argument)
+# Path to dataset root directory
+# CLI equivalent: INPUT_DIR (positional argument)
 # Example: bids_dir: /data/rawdata/my-study
 bids_dir: null
 
@@ -464,54 +458,43 @@ derivatives: []
 analysis_type: glm
 
 # -------------------------------------------------------------------------------
-# BIDS FILTERS
+# PARTICIPANT FILTERING
 # -------------------------------------------------------------------------------
-# Filter input images based on BIDS entities. These filters are applied when
-# discovering images in the derivatives folder using PyBIDS.
-#
-# NOTE: When using file_pattern or sample_patterns, BIDS filters are applied
-# AFTER pattern matching. It's often better to include filters directly in
-# your glob patterns.
-bids_filters:
-  # Task label to filter images
-  # CLI equivalent: --task
-  # Example: task: nback
-  # Set to null to include all tasks
-  task: null
+# Filter which participants to include in analysis.
+# If not specified, all participants from participants.tsv will be included.
 
-  # Session label to filter images
-  # CLI equivalent: --session
-  # Example: session: 01
-  # Set to null to include all sessions
-  session: null
-
-  # Subject ID(s) to include in analysis
-  # CLI equivalent: --subject (can be specified multiple times)
-  # Examples:
-  #   subject: null              # Include all subjects
-  #   subject: "01"              # Include only sub-01
-  #   subject: ["01", "02"]      # Include sub-01 and sub-02
-  subject: null
-
-  # Spatial normalization space
-  # CLI equivalent: None (config-only option)
-  # Common values: MNI152NLin2009cAsym, MNI152NLin6Asym, MNI305
-  # Example: space: MNI152NLin2009cAsym
-  space: MNI152NLin2009cAsym
+# List of participant labels to include (without 'sub-' prefix)
+# CLI equivalent: --participant-label / -p
+# Examples:
+#   participant_label: null                # Include all participants
+#   participant_label: ["01", "02", "03"]  # Include only sub-01, sub-02, sub-03
+participant_label: null
 
 # -------------------------------------------------------------------------------
 # FILE PATTERN MATCHING
 # -------------------------------------------------------------------------------
 # Glob patterns for finding image files in derivatives folder(s).
-# Use this for more flexible file selection than BIDS filters alone.
+# This is the PRIMARY method for file discovery. Include task, session,
+# space, and other filters directly in your patterns.
+#
+# Pattern syntax:
+#   '*' matches any characters within a directory
+#   '**' matches recursively across directories
+#   '?' matches single character
+#
+# Examples with embedded filters:
+#   - Task filter: "*task-rest*.nii.gz"
+#   - Session filter: "*ses-01*.nii.gz"
+#   - Space filter: "*space-MNI152NLin2009cAsym*.nii.gz"
+#   - Combined: "*task-rest*ses-01*space-MNI152*.nii.gz"
 
 # Single pattern for finding all input images (useful for one-sample tests)
 # CLI equivalent: --pattern / -p
 # Examples:
-#   file_pattern: "**/*_stat-effect_statmap.nii.gz"
+#   file_pattern: "**/*task-rest*space-MNI152*stat-effect*.nii.gz"
 #   file_pattern: "**/sub-*_task-nback_*.nii.gz"
 #   file_pattern: "**/*GS*cvr*.nii.gz"
-# Set to null to use BIDS filters only
+# Set to null to discover all .nii.gz files
 file_pattern: null
 
 # Pattern to exclude files after initial matching
@@ -521,17 +504,17 @@ file_pattern: null
 exclude_pattern: null
 
 # Multiple patterns for two-sample or paired tests
-# CLI equivalent: --patterns / -P (format: 'Name1=pattern1 Name2=pattern2')
+# CLI equivalent: --patterns (format: 'Name1=pattern1 Name2=pattern2')
 # The sample names (keys) are used when specifying contrasts
 # Examples:
 #   For two-sample test:
 #     sample_patterns:
-#       Controls: "**/sub-*_group-control_*.nii.gz"
-#       Patients: "**/sub-*_group-patient_*.nii.gz"
+#       Controls: "**/*group-control*.nii.gz"
+#       Patients: "**/*group-patient*.nii.gz"
 #   For method comparison:
 #     sample_patterns:
-#       GS: "*gas*GS*cvr*.nii.gz"
-#       SSS: "*gas*SSS*cvr*.nii.gz"
+#       GS: "**/*GS*cvr*.nii.gz"
+#       SSS: "**/*SSS*cvr*.nii.gz"
 # Set to null for one-sample or GLM analyses
 sample_patterns: null
 
@@ -612,11 +595,22 @@ group_comparison:
 # -------------------------------------------------------------------------------
 # Configuration for paired/within-subject comparisons
 paired_test:
-  # Column name that defines how to pair observations
+  # BIDS entity key for pairing observations (OPTIONAL, default: "sub")
   # CLI equivalent: --pair-by
-  # Common values: "sub" (pair by subject), "session" (pair by session)
+  # 
+  # Specifies which BIDS entity to use for pairing observations between conditions.
+  # Supports both BIDS abbreviations and full names:
+  #   - "sub" or "subject" (default): Pair observations with same subject
+  #   - "ses" or "session": Pair observations with same session
+  #   - "run": Pair observations with same run number
+  #   - "task": Pair observations with same task
+  #   - Any other BIDS entity (e.g., "acq", "desc", etc.)
+  #
+  # Files must contain BIDS-like key-value pairs in the filename
+  # (e.g., sub-001_ses-pre_*.nii.gz) for pairing to work.
+  #
   # Example: pair_by: sub
-  # Each unique value in this column represents one paired unit
+  # If null, defaults to "sub" (subject)
   pair_by: null
 
   # METHOD 1: Using conditions (legacy approach)
@@ -769,7 +763,7 @@ output:
   save_tables: true
 
   # Generate HTML report with visualizations
-  # CLI equivalent: --no-report (flag to disable)
+  # CLI equivalent: Always enabled (no flag to disable)
   # Report includes glass brain plots, cluster tables, and analysis summary
   generate_report: true
 
@@ -814,9 +808,7 @@ verbose: 1
 # Test if mean activation is significantly different from zero
 #
 # analysis_type: one-sample
-# file_pattern: "**/*_stat-effect_statmap.nii.gz"
-# bids_filters:
-#   task: nback
+# file_pattern: "**/*task-rest*space-MNI152*stat-effect*.nii.gz"
 #
 # --- TWO-SAMPLE T-TEST (GROUP COMPARISON) ---
 # Compare two independent groups using participants.tsv
@@ -825,14 +817,15 @@ verbose: 1
 # group_comparison:
 #   group_column: group
 # contrasts: ["Patients-Controls"]
+# file_pattern: "**/*stat-effect*.nii.gz"
 #
 # --- TWO-SAMPLE T-TEST (METHOD COMPARISON) ---
 # Compare two methods using file patterns
 #
 # analysis_type: two-sample
 # sample_patterns:
-#   GS: "*gas*GS*cvr*.nii.gz"
-#   SSS: "*gas*SSS*cvr*.nii.gz"
+#   GS: "**/*GS*cvr*.nii.gz"
+#   SSS: "**/*SSS*cvr*.nii.gz"
 # contrasts: ["GS-SSS"]
 #
 # --- PAIRED T-TEST (SESSION COMPARISON) ---
@@ -842,8 +835,8 @@ verbose: 1
 # paired_test:
 #   pair_by: sub
 #   sample_patterns:
-#     Pre: "*session-pre*.nii.gz"
-#     Post: "*session-post*.nii.gz"
+#     Pre: "**/*ses-pre*.nii.gz"
+#     Post: "**/*ses-post*.nii.gz"
 # contrasts: ["Post-Pre"]
 #
 # --- GLM WITH COVARIATES ---
@@ -854,6 +847,7 @@ verbose: 1
 #   columns: ["age", "sex"]
 #   categorical_columns: ["sex"]
 # contrasts: ["age"]
+# file_pattern: "**/*stat-effect*.nii.gz"
 #
 # ===============================================================================
 """

@@ -3,28 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="StatCraft Analysis Pipeline">
+    <meta name="description" content="StatCraft Second-Level Neuroimaging Analysis Report">
     <title>{{ title }}</title>
     <style>
+        /* Modern color scheme - Light theme */
         :root {
-            --primary-color: #3498db;
-            --secondary-color: #2c3e50;
-            --header-start: #2c3e50;
-            --header-end: #3498db;
-            --accent-pink: #d63384;
-            --accent-blue: #0d6efd;
-            --background-color: #f8f9fa;
-            --card-background: #ffffff;
+            --bg-color: #ffffff;
             --text-color: #333333;
-            --text-light: #666666;
-            --border-color: #dee2e6;
-            --warning-bg: #fff3cd;
-            --warning-text: #856404;
-            --warning-border: #ffc107;
+            --header-bg-start: #667eea;
+            --header-bg-end: #764ba2;
+            --nav-bg: #f8f9fa;
+            --nav-link-color: #333333;
+            --accent-color: #667eea;
+            --section-bg: #f9f9f9;
+            --card-bg: #ffffff;
+            --heading-color: #2d3748;
+            --muted-color: #718096;
+            --border-color: #e2e8f0;
+            --chart-bg: #ffffff;
+            --table-header-bg: #667eea;
+            --table-hover-bg: #f7fafc;
+            --tag-bg: #edf2f7;
+            --tag-color: #2d3748;
+            --footer-bg: #2d3748;
+            --footer-text: #ffffff;
+            --primary-color: #667eea;
+            --secondary-color: #2d3748;
+            --header-start: #667eea;
+            --header-end: #764ba2;
+            --background-color: #f9f9f9;
+            --card-background: #ffffff;
+            --text-light: #718096;
+            --accent-blue: #667eea;
+            --info-border: #0c5460;
+            
+            /* Status colors */
             --success-bg: #d4edda;
             --success-text: #155724;
             --success-border: #28a745;
+            --warning-bg: #fff3cd;
+            --warning-text: #856404;
+            --warning-border: #ffc107;
+            --error-bg: #f8d7da;
+            --error-text: #721c24;
             --info-bg: #d1ecf1;
-            --info-border: #0c5460;
+            --info-text: #0c5460;
         }
 
         html {
@@ -32,6 +56,8 @@
         }
 
         * {
+            margin: 0;
+            padding: 0;
             box-sizing: border-box;
         }
 
@@ -39,165 +65,102 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
             color: var(--text-color);
-            background-color: var(--background-color);
-            margin: 0;
-            padding: 0;
+            background-color: var(--bg-color);
         }
 
-        /* Sticky Navigation Bar */
+        /* Navigation Bar */
         nav.navbar {
+            background: linear-gradient(135deg, var(--header-bg-start), var(--header-bg-end));
+            padding: 1rem 2rem;
             position: sticky;
             top: 0;
             z-index: 1000;
-            background: linear-gradient(to right, var(--header-start), var(--header-end));
-            padding: 1rem 2rem;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
         }
 
         nav.navbar .title {
             color: white;
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin: 0;
+            font-size: 1.3rem;
+            font-weight: 600;
         }
 
-        nav.navbar ul {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            gap: 2rem;
-        }
-
-        nav.navbar a {
-            color: white;
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-        }
-
-        nav.navbar a:hover {
-            background-color: rgba(255, 255, 255, 0.2);
-        }
-
-        .page-wrapper {
+        /* Page Layout */
+        .container {
             display: grid;
-            grid-template-columns: 250px 1fr;
+            grid-template-columns: 280px 1fr;
             gap: 2rem;
             max-width: 1400px;
             margin: 0 auto;
             padding: 2rem;
-            margin-top: 0;
         }
 
-        /* Sidebar for TOC - Fixed position */
+        /* Sidebar Table of Contents */
         .sidebar {
-            position: fixed;
-            left: 0;
-            top: 100px;
-            width: 250px;
+            position: sticky;
+            top: 80px;
             height: calc(100vh - 100px);
             overflow-y: auto;
-            padding: 1rem 1.5rem;
-            border-right: 1px solid var(--border-color);
-            background-color: var(--background-color);
-            z-index: 100;
+            padding: 1.5rem;
+            background: var(--card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
-        .sidebar h3 {
-            margin: 0 0 0.5rem 0;
-            padding: 0.5rem;
-            cursor: pointer;
-            user-select: none;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
         }
 
-        .sidebar h3:hover {
-            background-color: rgba(0, 0, 0, 0.05);
-            border-radius: 4px;
+        .sidebar::-webkit-scrollbar-track {
+            background: var(--bg-color);
+            border-radius: 3px;
         }
 
-        .sidebar ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
+        .sidebar::-webkit-scrollbar-thumb {
+            background: var(--muted-color);
+            border-radius: 3px;
         }
 
-        .sidebar li {
-            margin: 0.25rem 0;
-            line-height: 1.4;
-        }
-
-        .sidebar a {
-            text-decoration: none;
-            color: var(--text-color);
-            display: block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-        }
-
-        .sidebar a:hover {
-            background-color: rgba(52, 152, 219, 0.1);
-            color: var(--primary-color);
-        }
-
-        .toc-toggle {
-            font-size: 1rem;
-            transition: transform 0.3s ease;
-        }
-
-        .toc-toggle.collapsed {
-            transform: rotate(-90deg);
-        }
-
+        /* Main Content */
         .main-content {
-            margin-left: 250px;
-            padding-left: 2rem;
+            min-width: 0;
         }
 
+        /* Header */
         header {
-            text-align: center;
+            background: linear-gradient(135deg, var(--header-bg-start), var(--header-bg-end));
+            color: white;
+            padding: 3rem 2.5rem;
+            border-radius: 12px;
             margin-bottom: 2rem;
-            padding-bottom: 1.5rem;
-            border-bottom: 3px solid var(--primary-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
 
         header h1 {
-            color: var(--secondary-color);
-            font-size: 2rem;
-            margin: 0 0 0.5rem 0;
-            font-weight: bold;
+            font-size: 2.5em;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
-        .metadata {
-            color: var(--text-light);
-            font-size: 0.95rem;
-            margin: 0;
+        header .metadata {
+            font-size: 1rem;
+            opacity: 0.95;
+            margin-top: 0.5rem;
         }
 
+        /* Typography */
         h2 {
             color: white;
-            font-size: 1.5rem;
-            background: linear-gradient(135deg, var(--header-start), var(--header-end));
-            padding: 1.5rem 2rem;
-            margin: 2rem 0 0 0;
-            border-radius: 10px 10px 0 0;
-            border-left: 3px solid var(--primary-color);
-            font-weight: bold;
+            font-size: 1.8rem;
+            margin: 0;
+            font-weight: 600;
             text-align: left;
         }
 
         h3 {
             color: var(--secondary-color);
-            font-size: 1.1rem;
+            font-size: 1.4rem;
             margin-top: 1.5rem;
             margin-bottom: 1rem;
             font-weight: 600;
@@ -213,7 +176,7 @@
             text-align: left;
         }
 
-        /* Section header (Level 1) - just a visual separator, no card */
+        /* Section header (Level 1) - visual separator with gradient */
         .section-header {
             margin: 3rem 0 2rem 0;
             cursor: pointer;
@@ -223,26 +186,24 @@
         }
 
         .section-header h2 {
-            color: white;
-            font-size: 1.8rem;
             background: linear-gradient(135deg, var(--header-start), var(--header-end));
             padding: 1.5rem 2rem;
             margin: 0;
             border-radius: 10px;
             border-left: 5px solid var(--primary-color);
-            font-weight: bold;
-            text-align: left;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            transition: all 0.3s ease;
         }
 
         .section-header:hover h2 {
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+            transform: translateY(-2px);
         }
 
-        /* Subsection header (Level 2 without content) - smaller visual separator */
+        /* Subsection header (Level 2) - subtle colored background */
         .subsection-header {
             margin: 2rem 0 1rem 0;
             cursor: pointer;
@@ -252,24 +213,22 @@
         }
 
         .subsection-header h3 {
-            color: var(--secondary-color);
-            font-size: 1.3rem;
             padding: 0.75rem 1rem;
             margin: 0;
             border-left: 4px solid var(--primary-color);
             background-color: #e8f4f8;
             border-radius: 6px;
-            font-weight: 600;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            transition: all 0.3s ease;
         }
 
         .subsection-header:hover h3 {
             background-color: #d6eef7;
         }
 
-        /* Sub-subsection header (Level 3 without content) - even smaller separator */
+        /* Sub-subsection header (Level 3) */
         .subsubsection-header {
             margin: 1.5rem 0 0.75rem 0;
             cursor: pointer;
@@ -279,17 +238,15 @@
         }
 
         .subsubsection-header h4 {
-            color: var(--text-color);
-            font-size: 1.1rem;
             padding: 0.5rem 0.75rem;
             margin: 0;
             border-left: 3px solid var(--primary-color);
             background-color: #f0f4f8;
             border-radius: 4px;
-            font-weight: 600;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            transition: all 0.3s ease;
         }
 
         .subsubsection-header:hover h4 {
@@ -321,18 +278,24 @@
             opacity: 0;
         }
 
+        /* Section cards */
         .section {
             margin-bottom: 2rem;
             padding: 2rem;
             background-color: var(--card-background);
             border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
             overflow: visible;
             transition: all 0.3s ease;
             border: 1px solid var(--border-color);
         }
 
-        /* Subsection styling - less prominent with light backgrounds */
+        .section:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+
+        /* Subsection styling - lighter backgrounds */
         .section.subsection {
             margin-bottom: 1rem;
             padding: 1.5rem;
@@ -346,7 +309,6 @@
             background: linear-gradient(to bottom, #f5f7fa 0%, #f0f2f5 100%);
         }
 
-        /* Add specific colors for different section types */
         .section.subsection h3 {
             color: var(--secondary-color);
             border-bottom: 2px solid #e1e8ed;
@@ -371,7 +333,7 @@
             background: linear-gradient(to bottom, #fffef9 0%, #faf8f3 100%);
         }
 
-        /* Center figures/plots within sections */
+        /* Center figures within sections */
         .section > .figure {
             display: block;
             margin-left: auto;
@@ -391,11 +353,7 @@
             text-align: left;
         }
 
-        .section:hover {
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-            transform: translateY(-2px);
-        }
-
+        /* Summary Cards */
         .summary-cards {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -404,16 +362,17 @@
         }
 
         .summary-card {
-            background-color: #f8f9fa;
+            background: linear-gradient(135deg, #ffffff, #f8f9fa);
             padding: 1.5rem;
             border-radius: 8px;
-            border-left: 3px solid var(--primary-color);
+            border-left: 4px solid var(--primary-color);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
             transition: all 0.3s ease;
         }
 
         .summary-card:hover {
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transform: translateY(-4px);
         }
 
         .summary-card h4 {
@@ -426,19 +385,21 @@
 
         .summary-card .value {
             color: var(--primary-color);
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             font-weight: bold;
         }
 
+        /* Figures */
         .figure {
             text-align: center;
-            margin: 0.75rem;
-            padding: 1rem;
-            background-color: #f8f9fa;
+            margin: 1.5rem auto;
+            padding: 1.5rem;
+            background-color: #ffffff;
             border-radius: 8px;
             display: inline-block;
-            width: calc(50% - 1.5rem);
+            width: calc(50% - 1rem);
             vertical-align: top;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
         }
 
         .figure img {
@@ -446,13 +407,14 @@
             height: auto;
             border: 1px solid var(--border-color);
             border-radius: 6px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
         .figure img:hover {
             cursor: pointer;
-            transform: scale(1.02);
+            transform: scale(1.03);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
 
         .figure-caption {
@@ -464,61 +426,69 @@
             font-size: 0.9rem;
             line-height: 1.5;
             border-radius: 3px;
+            text-align: left;
         }
 
+        /* Download Buttons */
         .btn-download-figure {
             display: block;
-            margin-top: 1rem;
-            padding: 0.5rem 1rem;
-            background-color: var(--primary-color);
+            margin: 1rem auto 0;
+            padding: 0.6rem 1.2rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--header-end));
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 0.9rem;
             font-weight: 500;
-            transition: background-color 0.3s ease;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         .btn-download-figure:hover {
-            background-color: var(--header-end);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
 
         .btn-download-tsv {
             display: inline-block;
             margin-top: 0.5rem;
             margin-right: 0.5rem;
-            padding: 0.4rem 0.8rem;
-            background-color: #28a745;
+            padding: 0.5rem 1rem;
+            background: linear-gradient(135deg, #28a745, #20c997);
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 0.85rem;
             font-weight: 500;
-            transition: background-color 0.3s ease;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         .btn-download-tsv:hover {
-            background-color: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
 
         .btn-download-latex {
             display: inline-block;
             margin-top: 0.5rem;
-            padding: 0.4rem 0.8rem;
-            background-color: #17a2b8;
+            padding: 0.5rem 1rem;
+            background: linear-gradient(135deg, #17a2b8, #138496);
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 0.85rem;
             font-weight: 500;
-            transition: background-color 0.3s ease;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         .btn-download-latex:hover {
-            background-color: #138496;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
 
         /* Lightbox Modal */
@@ -628,21 +598,14 @@
         /* Empty content placeholder */
         .empty-content {
             padding: 2rem;
-            background-color: var(--background-color);
+            background-color: var(--warning-bg);
             border-left: 4px solid var(--warning-border);
             border-radius: 6px;
             color: var(--warning-text);
             font-style: italic;
         }
 
-        /* Image Grid */
-        .image-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 2rem;
-            margin: 2rem 0;
-        }
-
+        /* Tables */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -651,13 +614,13 @@
             background-color: white;
             border-radius: 8px;
             overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
             text-align: left;
         }
 
         th {
-            background: linear-gradient(to right, #ecf0f1, #bdc3c7);
-            color: var(--secondary-color);
+            background: linear-gradient(135deg, var(--header-bg-start), var(--header-bg-end));
+            color: white;
             font-weight: 600;
             padding: 15px;
             text-align: left;
@@ -682,6 +645,7 @@
             transition: background-color 0.2s ease;
         }
 
+        /* Code and Pre */
         code {
             background-color: #f8f9fa;
             padding: 0.2rem 0.4rem;
@@ -701,6 +665,7 @@
             line-height: 1.4;
         }
 
+        /* Lists */
         ul {
             padding-left: 25px;
             text-align: left;
@@ -742,27 +707,36 @@
 
         .alert.info {
             background-color: var(--info-bg);
-            color: var(--info-border);
+            color: var(--info-text);
             border-color: var(--info-border);
         }
 
+        /* Table of Contents */
         .toc {
             background-color: var(--card-background);
-            padding: 1.5rem;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            padding: 0;
         }
 
         .toc h3 {
-            margin-top: 0;
-            margin-bottom: 1.5rem;
+            margin: 0 0 1rem 0;
             color: var(--secondary-color);
             font-size: 1rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             border-bottom: 2px solid var(--primary-color);
-            padding-bottom: 0.5rem;
+            padding-bottom: 0.75rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .toc-toggle {
+            transition: transform 0.3s ease;
+        }
+
+        .toc-toggle.collapsed {
+            transform: rotate(-90deg);
         }
 
         .toc ul {
@@ -772,7 +746,7 @@
         }
 
         .toc li {
-            margin-bottom: 0.6rem;
+            margin-bottom: 0.5rem;
             font-size: 0.9rem;
         }
 
@@ -793,50 +767,44 @@
             padding-left: 1rem;
         }
 
+        /* Footer */
         footer {
-            margin-top: 3rem;
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-            border-top: 1px solid var(--border-color);
+            margin-top: 4rem;
+            padding: 2.5rem 0;
             text-align: center;
-            color: var(--text-light);
-            font-size: 0.9rem;
+            color: white;
+            background: linear-gradient(135deg, var(--footer-bg), #1a202c);
+            border-radius: 12px;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        footer p {
+            margin: 0.5rem 0;
+            font-size: 0.95rem;
+            text-align: center;
+        }
+
+        footer strong {
+            color: var(--accent-color);
+            font-weight: 600;
         }
 
         /* Responsive Design */
         @media (max-width: 1024px) {
-            .page-wrapper {
-                grid-template-columns: 200px 1fr;
+            .container {
+                grid-template-columns: 220px 1fr;
                 gap: 1.5rem;
                 padding: 1.5rem;
             }
 
             .sidebar {
-                width: 200px;
-                padding: 1.5rem;
-            }
-
-            .main-content {
-                margin-left: 200px;
-                padding-left: 1.5rem;
-            }
-
-            .toc h3 {
-                font-size: 0.9rem;
-            }
-
-            .toc a {
-                font-size: 0.85rem;
-            }
-
-            .figure {
-                width: calc(50% - 0.75rem);
-                margin: 0.75rem auto;
+                width: 220px;
+                padding: 1.25rem;
             }
         }
 
         @media (max-width: 768px) {
-            .page-wrapper {
+            .container {
                 grid-template-columns: 1fr;
                 padding: 1rem;
             }
@@ -846,49 +814,39 @@
                 width: 100%;
                 height: auto;
                 margin-bottom: 2rem;
-                border-right: none;
-                border-bottom: 1px solid var(--border-color);
-                padding: 1rem;
-            }
-
-            .main-content {
-                margin-left: 0;
-                padding-left: 0;
+                max-height: 400px;
             }
 
             nav.navbar {
-                flex-direction: column;
-                gap: 1rem;
                 padding: 1rem;
             }
 
-            nav.navbar ul {
-                gap: 1rem;
+            nav.navbar .title {
+                font-size: 1.1rem;
             }
 
             header {
-                padding-bottom: 1rem;
-                margin-bottom: 1.5rem;
+                padding: 2rem 1.5rem;
             }
 
             header h1 {
-                font-size: 1.5rem;
+                font-size: 1.8rem;
             }
 
             h2 {
-                font-size: 1.25rem;
+                font-size: 1.4rem;
+            }
+
+            .section-header h2 {
                 padding: 1rem 1.5rem;
+                font-size: 1.4rem;
             }
 
             .section {
-                padding: 1rem;
+                padding: 1.5rem;
             }
 
             .summary-cards {
-                grid-template-columns: 1fr;
-            }
-
-            .image-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -908,10 +866,6 @@
             .lightbox-close {
                 font-size: 2rem;
                 right: 20px;
-            }
-
-            .toc {
-                margin-bottom: 1.5rem;
             }
 
             .figure {
@@ -972,6 +926,7 @@
                 <h1>{{ title }}</h1>
                 <p class="metadata">Generated on {{ date }}</p>
             </header>
+
             {# Render main content from nested_sections if available, to keep IDs consistent with the TOC #}
             {% macro render_sections(nodes, prefix='') -%}
                 {%- for node in nodes -%}
@@ -1082,8 +1037,10 @@
                 {% endfor %}
             {% endif %}
 
-            <footer style="margin-top: 3rem; padding: 2rem 0; text-align: center; color: #6c757d; border-top: 1px solid #e0e0e0;">
-                <p>Generated by StatCraft - Second-Level Neuroimaging Analysis Tool</p>
+            <footer>
+                <p><strong>StatCraft</strong> - Second-Level Neuroimaging Analysis Tool</p>
+                <p>Advanced statistical analysis pipeline for neuroimaging research</p>
+                <p style="margin-top: 1rem; font-size: 0.85rem; opacity: 0.8;">Report generated on {{ date }}</p>
             </footer>
         </main>
     </div>
@@ -1296,11 +1253,11 @@
             document.body.removeChild(link);
         }
 
-    // LaTeX table data storage
-    const latexTables = {{ latex_tables|tojson }};
+        // LaTeX table data storage
+        const latexTables = {{ latex_tables|tojson }};
 
-    // TSV table data storage
-    const tsvData = {{ tsv_data|tojson }};
+        // TSV table data storage
+        const tsvData = {{ tsv_data|tojson }};
 
         // Download TSV table functionality
         function downloadTSV(tsvKey, tableTitle) {
