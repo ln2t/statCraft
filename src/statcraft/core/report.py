@@ -1659,18 +1659,22 @@ class ReportGenerator:
         
         logger.debug(f"Connectome plot: edge_vmin={edge_vmin}, edge_vmax={edge_vmax}, threshold={threshold}")
         
-        fig = plt.figure(figsize=(14, 5))
-        
-        # Three views: sagittal, coronal, axial
-        views = ['x', 'y', 'z']
-        view_titles = ['Sagittal', 'Coronal', 'Axial']
-        
-        for i, (view, view_title) in enumerate(zip(views, view_titles)):
-            ax = fig.add_subplot(1, 3, i + 1)
+        # If matrix has no edges or vmin==vmax, create empty plot instead of calling nilearn
+        if n_nonzero == 0 or (edge_vmin is not None and edge_vmax is not None and edge_vmin == edge_vmax):
+            logger.debug("Connectome plot: no edges to display, creating empty plot")
+            fig = plt.figure(figsize=(14, 5))
+            ax = fig.add_subplot(111)
+            ax.text(0.5, 0.5, "No connections to display",
+                   ha='center', va='center', transform=ax.transAxes, fontsize=12)
+            ax.axis('off')
+            if title:
+                fig.suptitle(title, fontsize=12)
+        else:
             try:
-                # Avoid passing non-finite threshold to nilearn
+                # Use display_mode='ortho' to create sagittal, coronal, and axial views
                 plot_threshold = threshold if (threshold is not None and np.isfinite(threshold)) else None
-                plotting.plot_connectome(
+                
+                display = plotting.plot_connectome(
                     plot_matrix,
                     coordinates,
                     node_size=node_size,
@@ -1678,18 +1682,23 @@ class ReportGenerator:
                     edge_vmin=edge_vmin,
                     edge_vmax=edge_vmax,
                     edge_cmap='cold_hot',
-                    display_mode=view,
-                    axes=ax,
-                    title=view_title if i == 0 else None,
-                    colorbar=(i == 2),  # Only show colorbar on last plot
+                    display_mode='ortho',
+                    title=title,
+                    colorbar=True,
                 )
+                
+                # Get the underlying figure from the display object
+                fig = display.figure
+                
             except Exception as e:
-                logger.warning(f"Could not plot connectome view {view}: {e}")
-                ax.text(0.5, 0.5, f"Error: {str(e)[:30]}",
+                logger.warning(f"Could not plot connectome: {e}")
+                # Fallback: create a simple error figure
+                fig = plt.figure(figsize=(14, 5))
+                ax = fig.add_subplot(111)
+                ax.text(0.5, 0.5, f"Error plotting connectome: {str(e)[:60]}",
                        ha='center', va='center', transform=ax.transAxes)
-        
-        fig.suptitle(title, fontsize=12, y=1.02)
-        plt.tight_layout()
+                if title:
+                    fig.suptitle(title, fontsize=12)
         
         fig_key = self._fig_to_base64(fig)
         plt.close(fig)
