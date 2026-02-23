@@ -668,9 +668,11 @@ class DataLoader:
                 })
 
         if invalid:
-            logger.warning(f"{len(invalid)} connectivity matrices failed validation")
+            error_msg = f"{len(invalid)} connectivity matrices failed validation:\n"
             for img in invalid:
-                logger.warning(f"  {img['path']}: {img['reason']}")
+                error_msg += f"  {img['path']}: {img['reason']}\n"
+            error_msg += "\nThis indicates a potential bug in the participant-level analysis. Please review the connectomix output."
+            raise ValueError(error_msg)
 
         logger.info(f"{len(valid)} connectivity matrices passed validation")
         return valid, invalid
