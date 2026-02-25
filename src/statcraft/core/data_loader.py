@@ -639,13 +639,23 @@ class DataLoader:
                     })
                     continue
 
-                # Check symmetry (tolerance for numerical precision)
-                if not np.allclose(matrix, matrix.T, atol=1e-6):
-                    invalid.append({
-                        **img_info,
-                        'reason': "Matrix is not symmetric",
-                    })
-                    continue
+                # Check symmetry with two-stage tolerance
+                # First try strict tolerance (1e-8)
+                if not np.allclose(matrix, matrix.T, atol=1e-8):
+                    # If strict check fails, try loose tolerance (1e-5)
+                    if not np.allclose(matrix, matrix.T, atol=1e-5):
+                        invalid.append({
+                            **img_info,
+                            'reason': "Matrix is not symmetric (failed both strict and loose tolerance checks)",
+                        })
+                        continue
+                    else:
+                        # Loose tolerance passed but strict failed - warn but allow
+                        logger.warning(
+                            f"Connectivity matrix '{img_info['path']}' is not perfectly symmetric "
+                            f"(strict tolerance 1e-8 failed, but loose tolerance 1e-5 passed). "
+                            f"This may indicate numerical precision issues or upstream processing artifacts."
+                        )
 
                 # Store first matrix shape as reference
                 if reference_shape is None:
