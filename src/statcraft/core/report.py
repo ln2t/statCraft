@@ -1134,10 +1134,24 @@ class ReportGenerator:
 
     def _plot_design_matrix(self, design_matrix: pd.DataFrame) -> str:
         """Plot design matrix and return base64-encoded figure."""
-        fig, ax = plt.subplots(figsize=(10, max(4, len(design_matrix) * 0.2)))
+        # Sort design matrix by participant ID (index) alphabetically
+        design_matrix_sorted = design_matrix.sort_index()
+        
+        fig, ax = plt.subplots(figsize=(12, max(6, len(design_matrix_sorted) * 0.25)))
         
         # Ensure all columns are numeric for visualization
-        design_matrix_numeric = design_matrix.astype(float)
+        design_matrix_numeric = design_matrix_sorted.astype(float)
+        
+        # Determine appropriate number of y-axis labels based on number of observations
+        n_obs = len(design_matrix_numeric)
+        if n_obs <= 20:
+            yticklabels = True
+        elif n_obs <= 50:
+            # Show every other label
+            yticklabels = [design_matrix_numeric.index[i] if i % 2 == 0 else "" for i in range(n_obs)]
+        else:
+            # Show every 5th label
+            yticklabels = [design_matrix_numeric.index[i] if i % 5 == 0 else "" for i in range(n_obs)]
         
         # Plot design matrix
         sns.heatmap(
@@ -1146,11 +1160,15 @@ class ReportGenerator:
             center=0,
             ax=ax,
             cbar=True,
-            yticklabels=False,
+            yticklabels=yticklabels,
         )
-        ax.set_title("Design Matrix")
-        ax.set_xlabel("Regressors")
-        ax.set_ylabel("Observations")
+        ax.set_title("Design Matrix", fontsize=14, fontweight="bold")
+        ax.set_xlabel("Regressors", fontsize=12)
+        ax.set_ylabel("Participants", fontsize=12)
+        
+        # Increase font size for y-axis labels
+        ax.tick_params(axis='y', labelsize=10)
+        ax.tick_params(axis='x', labelsize=10)
         
         plt.tight_layout()
         
@@ -1659,18 +1677,22 @@ class ReportGenerator:
         
         logger.debug(f"Connectome plot: edge_vmin={edge_vmin}, edge_vmax={edge_vmax}, threshold={threshold}")
         
-        fig = plt.figure(figsize=(14, 5))
-        
-        # Three views: sagittal, coronal, axial
-        views = ['x', 'y', 'z']
-        view_titles = ['Sagittal', 'Coronal', 'Axial']
-        
-        for i, (view, view_title) in enumerate(zip(views, view_titles)):
-            ax = fig.add_subplot(1, 3, i + 1)
+        # If matrix has no edges or vmin==vmax, create empty plot instead of calling nilearn
+        if n_nonzero == 0 or (edge_vmin is not None and edge_vmax is not None and edge_vmin == edge_vmax):
+            logger.debug("Connectome plot: no edges to display, creating empty plot")
+            fig = plt.figure(figsize=(14, 5))
+            ax = fig.add_subplot(111)
+            ax.text(0.5, 0.5, "No connections to display",
+                   ha='center', va='center', transform=ax.transAxes, fontsize=12)
+            ax.axis('off')
+            if title:
+                fig.suptitle(title, fontsize=12)
+        else:
             try:
-                # Avoid passing non-finite threshold to nilearn
+                # Use display_mode='ortho' to create sagittal, coronal, and axial views
                 plot_threshold = threshold if (threshold is not None and np.isfinite(threshold)) else None
-                plotting.plot_connectome(
+                
+                display = plotting.plot_connectome(
                     plot_matrix,
                     coordinates,
                     node_size=node_size,
@@ -1678,18 +1700,23 @@ class ReportGenerator:
                     edge_vmin=edge_vmin,
                     edge_vmax=edge_vmax,
                     edge_cmap='cold_hot',
-                    display_mode=view,
-                    axes=ax,
-                    title=view_title if i == 0 else None,
-                    colorbar=(i == 2),  # Only show colorbar on last plot
+                    display_mode='ortho',
+                    title=title,
+                    colorbar=True,
                 )
+                
+                # Get the underlying figure from the display object
+                fig = display.figure
+                
             except Exception as e:
-                logger.warning(f"Could not plot connectome view {view}: {e}")
-                ax.text(0.5, 0.5, f"Error: {str(e)[:30]}",
+                logger.warning(f"Could not plot connectome: {e}")
+                # Fallback: create a simple error figure
+                fig = plt.figure(figsize=(14, 5))
+                ax = fig.add_subplot(111)
+                ax.text(0.5, 0.5, f"Error plotting connectome: {str(e)[:60]}",
                        ha='center', va='center', transform=ax.transAxes)
-        
-        fig.suptitle(title, fontsize=12, y=1.02)
-        plt.tight_layout()
+                if title:
+                    fig.suptitle(title, fontsize=12)
         
         fig_key = self._fig_to_base64(fig)
         plt.close(fig)
@@ -1885,20 +1912,24 @@ class ReportGenerator:
             )
             content += f'<div class="figure"><img src="data:image/png;base64,{self._figures[fig_key]}" alt="Unthresholded {section_title}"></div>\n'
         
-        # Add thresholded matrix heatmap
-        content += "<h3>Thresholded t-statistic Matrix</h3>\n"
-        fig_key = self._plot_connectivity_matrix(
-            t_matrix,
-            title=f"{contrast_name} - {correction.upper()} (t ≥ {threshold:.2f})",
-            roi_names=roi_names,
-            threshold=None,  # Matrix is already thresholded, don't apply threshold again
-            vmin=vmin,
-            vmax=vmax,
-        )
-        content += f'<div class="figure"><img src="data:image/png;base64,{self._figures[fig_key]}" alt="{section_title}"></div>\n'
+        # Add thresholded matrix heatmap only if there are significant values
+        has_significant_values = np.any(np.abs(t_matrix) > 1e-10)
+        if has_significant_values:
+            content += "<h3>Thresholded t-statistic Matrix</h3>\n"
+            fig_key = self._plot_connectivity_matrix(
+                t_matrix,
+                title=f"{contrast_name} - {correction.upper()} (t ≥ {threshold:.2f})",
+                roi_names=roi_names,
+                threshold=None,  # Matrix is already thresholded, don't apply threshold again
+                vmin=vmin,
+                vmax=vmax,
+            )
+            content += f'<div class="figure"><img src="data:image/png;base64,{self._figures[fig_key]}" alt="{section_title}"></div>\n'
+        else:
+            content += f"<p><em>No significant edges after applying {correction.upper()} threshold (t ≥ {threshold:.2f}) - no visualization generated</em></p>\n"
         
-        # Add connectome plot if coordinates available
-        if coordinates is not None:
+        # Add connectome plot if coordinates available and there are significant values
+        if coordinates is not None and has_significant_values:
             content += "<h3>Connectome (Glass Brain)</h3>\n"
             try:
                 fig_key = self._plot_connectome(

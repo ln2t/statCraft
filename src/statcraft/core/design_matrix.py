@@ -143,6 +143,10 @@ class DesignMatrixBuilder:
         # Ensure all columns are numeric (float) for downstream processing
         design_matrix = design_matrix.astype(float)
         
+        # Set index to participant_id for better labeling in visualizations
+        if "participant_id" in self.participants.columns:
+            design_matrix.index = self.participants["participant_id"].values
+        
         self.design_matrix = design_matrix
         logger.info(f"Built design matrix with shape {design_matrix.shape}")
         logger.info(f"Design matrix columns: {list(design_matrix.columns)}")
@@ -185,6 +189,10 @@ class DesignMatrixBuilder:
         
         if add_intercept:
             design_matrix.insert(0, "intercept", 1.0)
+        
+        # Set index to participant_id for better labeling in visualizations
+        if "participant_id" in self.participants.columns:
+            design_matrix.index = self.participants["participant_id"].values
         
         self.design_matrix = design_matrix
         logger.info(f"Built group design matrix with groups: {groups}")

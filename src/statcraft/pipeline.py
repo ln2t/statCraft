@@ -3445,6 +3445,7 @@ class StatCraftPipeline:
         scaling_key: Optional[str] = None,
         zscore: bool = False,
         mask: Optional[str] = None,
+        bids_filters: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Run the complete analysis pipeline.
@@ -3475,6 +3476,8 @@ class StatCraftPipeline:
             Brain mask pattern for z-scoring. Required when zscore=True.
             Format: '/path/to/fmriprep/sub-*/*/*brain*mask.nii.gz'.
             Uses entity matching to find the correct mask for each image.
+        bids_filters : dict, optional
+            BIDS filters for filtering data. Currently reserved for future use.
 
         Returns
         -------
