@@ -17,7 +17,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from nilearn.glm.second_level import SecondLevelModel
-from nilearn.image import mean_img, math_img, concat_imgs, new_img_like
+from nilearn.image import mean_img, math_img, concat_imgs, new_img_like, resample_img
 from nilearn.masking import compute_brain_mask, apply_mask, unmask, intersect_masks
 from scipy import stats
 
@@ -58,6 +58,105 @@ class SecondLevelGLM:
         self._images: Optional[List] = None
         self._design_matrix: Optional[pd.DataFrame] = None
     
+    def _resample_images_to_consistent_affine(
+        self,
+        images: List[Union[str, Path, nib.Nifti1Image]],
+    ) -> List[nib.Nifti1Image]:
+        """
+        Check for affine mismatches and resample all images to a common affine.
+        
+        If all images have the same affine, returns them unchanged.
+        If affines differ, resamples all images to the first image's affine.
+        
+        Parameters
+        ----------
+        images : list
+            List of image paths or nibabel images.
+        
+        Returns
+        -------
+        list
+            List of nibabel images (resampled if necessary).
+        """
+        # Load all images and extract affines
+        loaded_images = []
+        affines = []
+        
+        for img in images:
+            if isinstance(img, (str, Path)):
+                img_loaded = nib.load(img)
+            else:
+                img_loaded = img
+            
+            loaded_images.append(img_loaded)
+            affines.append(img_loaded.affine)
+        
+        # Check if all affines are the same (within numerical tolerance)
+        reference_affine = affines[0]
+        reference_shape = loaded_images[0].shape
+        
+        affines_match = all(np.allclose(aff, reference_affine, atol=1e-5) for aff in affines[1:])
+        
+        if affines_match:
+            logger.info("All images have consistent affines, no resampling needed")
+            return loaded_images
+        
+        # Log the affine mismatch
+        logger.warning("Affine mismatch detected across images")
+        logger.info("Resampling all images to reference affine (from first image)...")
+        
+        # Resample all images to match the first image's affine and shape
+        resampled_images = []
+        
+        for i, img in enumerate(loaded_images):
+            if i == 0:
+                # First image is the reference, keep it as is
+                logger.debug(f"Image 0: Using as reference (no resampling needed)")
+                resampled_images.append(img)
+            else:
+                logger.debug(f"Image {i}: Resampling to reference affine")
+                try:
+                    resampled_img = resample_img(
+                        img,
+                        target_affine=reference_affine,
+                        target_shape=reference_shape,
+                        interpolation='continuous'
+                    )
+                    resampled_images.append(resampled_img)
+                except Exception as e:
+                    logger.error(f"Failed to resample image {i}: {e}")
+                    raise
+        
+        logger.info(f"Resampled {len(resampled_images) - 1} images to match reference affine")
+        return resampled_images
+    
+    def _get_target_affine(self, img: Union[str, Path, nib.Nifti1Image]) -> Optional[np.ndarray]:
+        """
+        Extract the affine matrix from an image.
+        
+        Parameters
+        ----------
+        img : str, Path, or nibabel.Nifti1Image
+            Image to extract affine from.
+        
+        Returns
+        -------
+        np.ndarray or None
+            Affine matrix (4x4) or None if extraction fails.
+        """
+        try:
+            if isinstance(img, (str, Path)):
+                img_loaded = nib.load(img)
+            else:
+                img_loaded = img
+            
+            affine = img_loaded.affine
+            logger.debug(f"Extracted affine from image")
+            return affine
+        except Exception as e:
+            logger.warning(f"Could not extract affine from image: {e}")
+            return None
+    
     def fit(
         self,
         images: List[Union[str, Path, nib.Nifti1Image]],
@@ -78,9 +177,13 @@ class SecondLevelGLM:
         SecondLevelGLM
             Self, for method chaining.
         """
-        # Convert paths to strings
+        # Check for affine mismatches and resample if necessary
+        logger.info("Checking image affines for consistency...")
+        resampled_images = self._resample_images_to_consistent_affine(images)
+        
+        # Convert resampled images to strings for SecondLevelModel
         images_list = []
-        for img in images:
+        for img in resampled_images:
             if isinstance(img, (str, Path)):
                 images_list.append(str(img))
             else:
@@ -96,7 +199,7 @@ class SecondLevelGLM:
         logger.info(f"Fitting GLM with {len(images_list)} images")
         logger.info(f"Design matrix columns: {list(design_matrix.columns)}")
         
-        # Create and fit model
+        # Create and fit model (without target_affine - we've already handled resampling)
         self.model = SecondLevelModel(
             mask_img=self.mask,
             smoothing_fwhm=self.smoothing_fwhm,

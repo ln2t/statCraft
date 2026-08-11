@@ -19,7 +19,7 @@ import pandas as pd
 from scipy import stats
 from scipy.ndimage import label, generate_binary_structure
 from nilearn.glm import threshold_stats_img, cluster_level_inference
-from nilearn.image import get_data, new_img_like
+from nilearn.image import get_data, new_img_like, resample_img
 from nilearn.reporting import get_clusters_table
 from nilearn.glm.second_level import non_parametric_inference
 
@@ -86,6 +86,78 @@ class StatisticalInference:
         self.cluster_tables: Dict[str, Dict[str, pd.DataFrame]] = {}
         self.threshold_values: Dict[str, Dict[str, float]] = {}  # Store actual threshold values
         self._inference_results: Dict[str, Any] = {}
+    
+    def _resample_images_to_consistent_affine(
+        self,
+        images: List[Union[str, Path, nib.Nifti1Image]],
+    ) -> List[nib.Nifti1Image]:
+        """
+        Check for affine mismatches and resample all images to a common affine.
+        
+        If all images have the same affine, returns them unchanged.
+        If affines differ, resamples all images to the first image's affine.
+        
+        Parameters
+        ----------
+        images : list
+            List of image paths or nibabel images.
+        
+        Returns
+        -------
+        list
+            List of nibabel images (resampled if necessary).
+        """
+        # Load all images and extract affines
+        loaded_images = []
+        affines = []
+        
+        for img in images:
+            if isinstance(img, (str, Path)):
+                img_loaded = nib.load(img)
+            else:
+                img_loaded = img
+            
+            loaded_images.append(img_loaded)
+            affines.append(img_loaded.affine)
+        
+        # Check if all affines are the same (within numerical tolerance)
+        reference_affine = affines[0]
+        reference_shape = loaded_images[0].shape
+        
+        affines_match = all(np.allclose(aff, reference_affine, atol=1e-5) for aff in affines[1:])
+        
+        if affines_match:
+            logger.info("All images have consistent affines, no resampling needed")
+            return loaded_images
+        
+        # Log the affine mismatch
+        logger.warning("Affine mismatch detected across images")
+        logger.info("Resampling all images to reference affine (from first image)...")
+        
+        # Resample all images to match the first image's affine and shape
+        resampled_images = []
+        
+        for i, img in enumerate(loaded_images):
+            if i == 0:
+                # First image is the reference, keep it as is
+                logger.debug(f"Image 0: Using as reference (no resampling needed)")
+                resampled_images.append(img)
+            else:
+                logger.debug(f"Image {i}: Resampling to reference affine")
+                try:
+                    resampled_img = resample_img(
+                        img,
+                        target_affine=reference_affine,
+                        target_shape=reference_shape,
+                        interpolation='continuous'
+                    )
+                    resampled_images.append(resampled_img)
+                except Exception as e:
+                    logger.error(f"Failed to resample image {i}: {e}")
+                    raise
+        
+        logger.info(f"Resampled {len(resampled_images) - 1} images to match reference affine")
+        return resampled_images
     
     def threshold_uncorrected(
         self,
@@ -346,10 +418,14 @@ class StatisticalInference:
         if smoothing_fwhm is not None:
             logger.info(f"Applying smoothing with FWHM={smoothing_fwhm} mm")
         
+        # Check for affine mismatches and resample if necessary
+        logger.info("Checking image affines for consistency...")
+        resampled_images = self._resample_images_to_consistent_affine(second_level_input)
+        
         # Run non-parametric inference
         try:
             perm_results = non_parametric_inference(
-                second_level_input,
+                resampled_images,
                 design_matrix=design_matrix,
                 second_level_contrast=contrast,
                 n_perm=n_perm,
@@ -381,11 +457,11 @@ class StatisticalInference:
                     from nilearn._utils.niimg_conversions import check_niimg
 
                     # Create masker from first image
-                    first_img = check_niimg(second_level_input[0])
+                    first_img = check_niimg(resampled_images[0])
                     masker = NiftiMasker(mask_strategy='epi').fit(first_img)
 
                     # Transform images to 2D array
-                    Y = np.vstack([masker.transform(img) for img in second_level_input])
+                    Y = np.vstack([masker.transform(img) for img in resampled_images])
 
                     # Prepare contrast
                     if isinstance(contrast, (list, np.ndarray)):

@@ -11,7 +11,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.html)
 
-CLI tool for second-level neuroimaging analysis, supporting group-level comparisons, method comparisons, and statistical inference on brain images (e.g., fMRI, PET) or connectivity matrices. Uses flexible pattern matching for file discovery, leverages Nilearn, and produces reproducible, interpretable results with minimal user input.
+StatCraft is a BIDS-friendly wrapper around [Nilearn](https://nilearn.github.io/) for second-level neuroimaging analysis. It supports group-level comparisons, method comparisons, and statistical inference on brain images (e.g., fMRI, PET) or connectivity matrices. Under the hood, the core statistical routines — GLM fitting, contrast computation, permutation testing and thresholding — rely on Nilearn's well-proven implementations. StatCraft adds flexible pattern-based file discovery and produces reproducible, interpretable results with minimal user input.
 
 ## Features
 
@@ -281,6 +281,9 @@ If you use StatCraft in your research, please cite:
 
 ## Acknowledgments
 
-- [Nilearn](https://nilearn.github.io/) - Core neuroimaging functionality
+StatCraft is built on top of [Nilearn](https://nilearn.github.io/), which provides the core statistical and neuroimaging routines (second-level GLM, contrast computation, thresholding, and atlas-based annotation). We are grateful to the Nilearn developers and contributors for maintaining such a robust and well-documented library.
+
+Other key dependencies:
+
 - [PyBIDS](https://bids-standard.github.io/pybids/) - BIDS data handling
 - [NiBabel](https://nipy.org/nibabel/) - NIfTI file handling
