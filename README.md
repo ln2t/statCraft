@@ -133,7 +133,21 @@ Supports both BIDS abbreviations (`sub`, `ses`, `run`, `task`, etc.) and full na
 
 *Note:* `--pair-by` is optional, with default value `sub`. Every pattern must match exactly one file per complete key; duplicates and missing keys are errors. Repeated observations from the same subject are not independent and must be selected/aggregated upstream.
 
-Use `--inference-mask` to define a predetermined anatomical test domain independently of `--scaling`/`--mask` normalization ROIs. All paired routes use and save the intersection of original finite input support and explicit inference masks; valid zero differences remain in that domain. See [paired method comparisons](docs/paired_method_comparisons.md) for geometry/exclusion behavior, common normalization support, CVRMap examples, reproducible configurations and limitations.
+All image-analysis routes use and save a brain inference mask, independently of
+`--scaling`/`--mask` normalization ROIs. By default StatCraft looks for
+subject-specific `*desc-brain_mask.nii` or `.nii.gz` files in each input map's
+directory, matching BIDS entities. Use `--inference-mask PATH_OR_GLOB` to select
+a fixed mask or individual masks elsewhere. It intersects every included mask
+and the finite support of the original input maps; valid zero values remain.
+Masks must match the maps' grid. Ambiguous matches and empty intersections fail.
+If any individual mask is missing, a warning is emitted and the Nilearn MNI152
+brain mask is resampled by nearest neighbor to the input grid and used instead
+of all individual masks. This assumes the maps are registered to MNI152;
+matching shape and affine alone do not establish registration. Check the saved
+inference mask and its JSON provenance, particularly when using the fallback.
+Connectivity analyses are unaffected. See [paired method comparisons](docs/paired_method_comparisons.md)
+for geometry/exclusion behavior, common normalization support, CVRMap examples,
+reproducible configurations and limitations.
 
 *Examples:*
 
@@ -284,6 +298,15 @@ output:
 ```
 
 ## Outputs
+
+Output names use the task entity from the included input filenames. When
+multiple tasks are present, their distinct names are sorted and concatenated,
+followed by `H` and the first 12 hexadecimal characters of the SHA-256 hash of
+the sorted task names joined with a NUL byte (for example,
+`task-task1task2H<hash>`). The hash distinguishes ambiguous concatenations;
+it is a short identifier, not a guarantee against hash collisions. If some input
+filenames lack a task entity, StatCraft warns that the label represents only the
+known tasks. A single task retains its original name.
 
 StatCraft generates:
 

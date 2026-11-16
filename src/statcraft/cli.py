@@ -486,11 +486,12 @@ def create_parser() -> argparse.ArgumentParser:
     paired.add_argument(
         "--inference-mask",
         metavar="PATH_OR_GLOB",
-        help="Anatomical test domain for paired pattern/combine analyses. "
+        help="Anatomical test domain for image analyses. "
              "Intersected across all included inputs and with their finite support; "
              "independent of --scaling and --mask normalization ROIs. "
-             "Must already match the maps' shape and affine. Without it, all shared "
-             "finite voxels (including zero background) are tested.",
+             "Must match the maps' shape and affine. By default, sibling "
+             "subject-specific desc-brain_mask files are used. If any mask is "
+             "missing, a resampled MNI152 brain mask is used with a warning.",
     )
 
     paired.add_argument(

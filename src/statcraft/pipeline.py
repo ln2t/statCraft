@@ -5,6 +5,7 @@ This module provides a high-level interface for running
 complete second-level neuroimaging analyses.
 """
 
+import hashlib
 import logging
 import re
 from pathlib import Path
@@ -586,69 +587,6 @@ class StatCraftPipeline:
         logger.info(f"Added {len(self.design_matrix_builder.contrasts)} contrasts")
         return self.design_matrix_builder.contrasts
 
-    def _compute_intersection_mask(self) -> Optional[nib.Nifti1Image]:
-        """
-        Compute intersection mask from all masks used in z-scoring.
-
-        This method takes all unique masks that were used during z-scoring normalization
-        and computes their intersection using nilearn's intersect_masks function.
-        The intersection mask contains only voxels that are valid (non-zero) in ALL
-        individual masks.
-
-        Returns
-        -------
-        nibabel.Nifti1Image or None
-            Intersection mask image if masks are available, None otherwise.
-        """
-        # Check if masks were saved during z-scoring
-        if not hasattr(self, '_zscore_masks_used') or not self._zscore_masks_used:
-            logger.info("No z-scoring masks found, will use automatic mask computation")
-            return None
-
-        # Get unique masks
-        unique_masks = list(set(self._zscore_masks_used.values()))
-
-        if len(unique_masks) == 0:
-            logger.info("No unique masks found, will use automatic mask computation")
-            return None
-
-        logger.info(f"Computing intersection mask from {len(unique_masks)} unique mask(s)")
-        print(f"\nComputing intersection mask from {len(unique_masks)} unique mask file(s)...")
-
-        # Load all masks
-        mask_images = []
-        for mask_path in unique_masks:
-            try:
-                mask_img = nib.load(mask_path)
-                mask_images.append(mask_img)
-                logger.debug(f"  Loaded mask: {Path(mask_path).name}")
-            except Exception as e:
-                logger.warning(f"Could not load mask {mask_path}: {e}")
-                continue
-
-        if len(mask_images) < 1:
-            logger.warning("Could not load any masks for intersection, will use automatic mask computation")
-            return None
-
-        # Compute intersection
-        try:
-            from nilearn.masking import intersect_masks
-
-            if len(mask_images) == 1:
-                intersection = mask_images[0]
-                logger.info("Only one mask found, using it directly as GLM mask")
-            else:
-                # intersect_masks takes a list of mask images and returns their intersection
-                intersection = intersect_masks(mask_images, threshold=1)
-                logger.info(f"Computed intersection of {len(mask_images)} masks")
-                print(f"  Intersection mask computed successfully")
-        except Exception as e:
-            logger.error(f"Error computing mask intersection: {e}")
-            logger.info("Will use automatic mask computation")
-            return None
-
-        return intersection
-
     def fit_model(
         self,
         mask: Optional[Union[str, Path, nib.Nifti1Image]] = None,
@@ -673,12 +611,9 @@ class StatCraftPipeline:
 
         analysis_type = self.config.get("analysis_type", "glm")
 
-        # Compute intersection mask from z-scoring masks if no explicit mask provided
+        # Normalization masks are not necessarily anatomical inference masks.
         if mask is None and analysis_type != "paired":
-            intersection_mask = self._compute_intersection_mask()
-            if intersection_mask is not None:
-                mask = intersection_mask
-                logger.info("Using intersection mask from z-scoring masks for GLM")
+            mask = self._build_inference_mask(self._images)
 
         # Apply normalization if specified
         norm_config = self.config.get("normalization", {})
@@ -760,6 +695,7 @@ class StatCraftPipeline:
                 differences.append(nib.Nifti1Image(
                     self._prepare_paired_arithmetic(a) - self._prepare_paired_arithmetic(b), a.affine))
             self._diff_images = differences
+            self._diff_image_infos = [first for first, _ in pairs]
             self._glm_input_images = differences
             self._design_matrix = pd.DataFrame({'intercept': np.ones(len(differences))})
 
@@ -1350,9 +1286,9 @@ class StatCraftPipeline:
         Generate BIDS-compatible prefix from input filenames.
 
         Extracts common parts from all input filenames and creates a prefix.
-        Only includes BIDS entities that have the SAME value across all input files.
-        This ensures that sample-specific entities (e.g., different 'label' values
-        in multi-sample comparisons) are excluded from output filenames.
+        Includes shared entities and a composite task label for mixed-task inputs.
+        Other sample-specific entities (e.g., different 'label' values in
+        multi-sample comparisons) are excluded from output filenames.
 
         For example, if comparing files with 'label-GS' and 'label-SSS', the
         'label' entity will be excluded from the output prefix since it has
@@ -1372,6 +1308,7 @@ class StatCraftPipeline:
         # Split filenames into BIDS entities
         from collections import defaultdict
         entities = defaultdict(set)
+        files_without_task = 0
 
         for filename in filenames:
             # Remove extension
@@ -1379,15 +1316,31 @@ class StatCraftPipeline:
 
             # Parse BIDS entities (key-value pairs separated by _)
             parts = name.split('_')
+            has_task = False
             for part in parts:
                 if '-' in part:
                     key, value = part.split('-', 1)
                     entities[key].add(value)
+                    if key == "task" and value:
+                        has_task = True
+            if not has_task:
+                files_without_task += 1
 
-        # Build prefix from entities that have only one unique value (common across all files)
-        # This excludes sample-specific entities in multi-sample analyses
+        tasks = sorted(entities.get("task", set()) - {""})
+        if tasks and files_without_task:
+            logger.warning(
+                "%d of %d input filenames are missing a task entity; "
+                "the output task label only represents the known tasks.",
+                files_without_task, len(filenames),
+            )
+
         prefix_parts = []
-        for key in ['task', 'space', 'desc', 'label', 'res', 'den']:
+        if len(tasks) == 1:
+            prefix_parts.append(f"task-{tasks[0]}")
+        elif len(tasks) > 1:
+            digest = hashlib.sha256("\0".join(tasks).encode("utf-8")).hexdigest()[:12]
+            prefix_parts.append(f"task-{''.join(tasks)}H{digest}")
+        for key in ['space', 'desc', 'label', 'res', 'den']:
             if key in entities and len(entities[key]) == 1:
                 value = list(entities[key])[0]
                 prefix_parts.append(f"{key}-{value}")
@@ -1406,6 +1359,7 @@ class StatCraftPipeline:
         img_info: Dict,
         idx: int,
         preproc_type: Optional[str] = None,
+        task_override: Optional[str] = None,
     ) -> str:
         """
         Generate BIDS-style filename for input data saved to the data/ folder.
@@ -1418,6 +1372,8 @@ class StatCraftPipeline:
             Index of the image in the list.
         preproc_type : str, optional
             Type of preprocessing applied: 'zscore', 'scaled', 'diff', or None.
+        task_override : str, optional
+            Task label for an image derived from multiple tasks.
 
         Returns
         -------
@@ -1465,6 +1421,9 @@ class StatCraftPipeline:
             else:
                 # Last part without hyphen is typically the suffix (e.g., 'bold', 'cvr')
                 suffix_part = part
+
+        if task_override is not None:
+            orig_entities["task"] = task_override
 
         # Build filename using standard entity order
         for key in entity_order:
@@ -1979,13 +1938,12 @@ class StatCraftPipeline:
                 if isinstance(img, nib.Nifti1Image):
                     # For in-memory images (z-scored/scaled/difference), generate BIDS-style filename
                     if is_diff_images:
-                        # For paired analysis difference images
-                        # Try to get subject info from paired samples
-                        if hasattr(self, '_images') and idx < len(self._images) // 2:
-                            # Get info from the first sample of the pair
-                            img_info = self._images[idx]
+                        if hasattr(self, '_diff_image_infos') and idx < len(self._diff_image_infos):
+                            img_info = self._diff_image_infos[idx]
+                            task_part = bids_prefix.split("_", 1)[0]
+                            task_override = task_part[5:] if task_part.startswith("task-") else None
                             filename = self._generate_data_filename(
-                                img_info, idx, preproc_type="diff"
+                                img_info, idx, preproc_type="diff", task_override=task_override
                             )
                         else:
                             filename = f"diff_{idx:04d}.nii.gz"
@@ -2500,14 +2458,14 @@ class StatCraftPipeline:
             raise ValueError("Repeated observations from the same subject are not independent. "
                              "Select one session/run or aggregate within subject upstream.")
 
-    def _build_paired_inference_mask(self, images_info, normalization_pattern=None):
-        """Intersect finite *input* support and optional explicit anatomical masks.
-
-        Zero input values and zero differences are valid observations. Normalization
-        ROIs never define the multiple-comparison domain.
-        """
+    def _build_inference_mask(self, images_info, normalization_pattern=None):
+        """Build the anatomical test domain on the original input grid."""
         if not images_info:
-            raise ValueError("No complete valid pairs remain after geometry validation")
+            raise ValueError("No valid images remain for inference")
+        import nilearn
+        from nilearn.datasets import load_mni152_brain_mask
+        from nilearn.image import resample_to_img
+
         reference = nib.load(images_info[0]["path"], mmap=True)
         support = np.ones(reference.shape, dtype=bool)
         finite_support = np.ones(reference.shape, dtype=bool)
@@ -2515,6 +2473,7 @@ class StatCraftPipeline:
         mask_pattern = self.config.get("inference_mask")
         mask_paths = set()
         normalization_paths = set()
+        missing = []
         for info in images_info:
             image = nib.load(info["path"], mmap=True)
             self._assert_same_grid(image, reference, str(info["path"]))
@@ -2531,9 +2490,14 @@ class StatCraftPipeline:
                 normalization_support &= values > 0
                 normalization_paths.add(str(path.resolve()))
             if mask_pattern:
-                path = self._find_mask_for_image(info, str(mask_pattern))
-                if path is None:
-                    raise FileNotFoundError(f"No inference mask matches {info['path']}")
+                path = self._find_mask_for_image(info, str(mask_pattern), strict_entities=True)
+            else:
+                path = self._find_mask_for_image(
+                    info, str(Path(info["path"]).parent / "*desc-brain_mask.nii*"),
+                    require_subject=True, strict_entities=True)
+            if path is None:
+                missing.append(str(info["path"]))
+            else:
                 mask_image = nib.load(path, mmap=True)
                 self._assert_same_grid(mask_image, reference, f"Inference mask {path}")
                 mask_data = np.asarray(mask_image.dataobj, dtype=np.float64)
@@ -2541,21 +2505,34 @@ class StatCraftPipeline:
                     raise ValueError(f"Inference mask must be finite and nonnegative: {path}")
                 support &= mask_data > 0
                 mask_paths.add(str(path.resolve()))
+        if missing:
+            logger.warning(
+                "Missing inference brain mask for %d of %d inputs (%s); "
+                "using the MNI152 brain mask instead of individual masks. "
+                "This assumes inputs are registered to MNI152 space.",
+                len(missing), len(images_info), ", ".join(missing),
+            )
+            template = load_mni152_brain_mask(threshold=0.2)
+            template = resample_to_img(template, reference, interpolation="nearest")
+            support = np.asarray(template.dataobj) > 0
+            mask_paths = set()
         support &= finite_support
         self._paired_normalization_support = finite_support & normalization_support
         if normalization_pattern and not np.any(self._paired_normalization_support):
             raise ValueError("Shared finite-support normalization ROI is empty")
         if not np.any(support):
             raise ValueError("Shared finite-support inference mask is empty")
-        if not mask_pattern:
-            logger.warning("No --inference-mask: testing all shared finite input voxels, "
-                           "including zero background. Supply a predetermined brain/ROI mask.")
         self._inference_mask = nib.Nifti1Image(support.astype(np.uint8), reference.affine)
         self._inference_mask_metadata = {
-            "Policy": "intersection_of_finite_input_support_and_explicit_masks",
+            "Policy": ("mni152_brain_mask_and_finite_input_support" if missing else
+                       "intersection_of_finite_input_support_and_anatomical_masks"),
             "ZeroValuesAreValid": True,
             "VoxelCount": int(support.sum()),
             "MaskSources": sorted(mask_paths),
+            "MissingMaskInputSources": missing,
+            "MNI152MaskSource": ("nilearn.datasets.load_mni152_brain_mask" if missing else None),
+            "MNI152MaskParameters": ({"threshold": 0.2, "interpolation": "nearest",
+                                      "NilearnVersion": nilearn.__version__} if missing else None),
             "InputSources": [str(Path(info['path']).resolve()) for info in images_info],
             "NormalizationMasksDefineInference": False,
             "NormalizationSupportPolicy": "intersection_of_all_original_finite_support_and_normalization_rois",
@@ -2564,6 +2541,9 @@ class StatCraftPipeline:
             "NormalizationMaskSources": sorted(normalization_paths),
         }
         return self._inference_mask
+
+    def _build_paired_inference_mask(self, images_info, normalization_pattern=None):
+        return self._build_inference_mask(images_info, normalization_pattern)
 
     def _prepare_paired_arithmetic(self, image):
         """Remove nonfinite/out-of-domain values before smoothing or fitting."""
@@ -2636,6 +2616,8 @@ class StatCraftPipeline:
         self,
         image_info: Dict,
         mask_pattern: str,
+        require_subject: bool = False,
+        strict_entities: bool = False,
     ) -> Optional[Path]:
         """
         Find a mask file matching the mask pattern for a given image.
@@ -2665,7 +2647,7 @@ class StatCraftPipeline:
         mask_pattern = os.path.expanduser(mask_pattern)
 
         # Check if it's a fixed path (no wildcards)
-        if '*' not in mask_pattern and '?' not in mask_pattern:
+        if not glob.has_magic(mask_pattern):
             mask_path = Path(mask_pattern)
             if mask_path.exists():
                 return mask_path
@@ -2678,21 +2660,33 @@ class StatCraftPipeline:
         entities = image_info.get("entities", {})
 
         if len(matches) == 0:
-            logger.warning(f"No mask found for image {image_info['path'].name} using pattern {mask_pattern}")
+            logger.warning(f"No mask found for image {Path(image_info['path']).name} using pattern {mask_pattern}")
             return None
 
         filtered_matches = []
+        entities = dict(entities)
+        if image_info.get("subject") is not None:
+            entities.setdefault("subject", image_info["subject"])
         # Match complete entity values, avoiding e.g. sub-01 matching sub-010.
         entity_names = {"sub": "subject", "ses": "session", "task": "task", "run": "run",
                         "space": "space", "res": "resolution", "acq": "acquisition", "echo": "echo"}
         for match in sorted(matches):
+            if require_subject and not match.endswith((".nii", ".nii.gz")):
+                continue
             mask_entities = {}
             for abbreviation, key in entity_names.items():
                 values = re.findall(r"(?:^|[/_])" + abbreviation + r"-([^/_]+)", str(match))
                 if values:
                     mask_entities[key] = values[-1]
-            if all(key not in mask_entities or str(value) == mask_entities[key]
-                   for key, value in entities.items()):
+            if require_subject and ("subject" not in entities or "subject" not in mask_entities):
+                continue
+            if strict_entities:
+                matches_entities = all(key in entities and str(entities[key]) == value
+                                       for key, value in mask_entities.items())
+            else:
+                matches_entities = all(key not in mask_entities or str(value) == mask_entities[key]
+                                       for key, value in entities.items())
+            if matches_entities:
                 filtered_matches.append(match)
 
         if len(filtered_matches) == 1:
@@ -2705,7 +2699,7 @@ class StatCraftPipeline:
         else:
             logger.warning(
                 f"Pattern {mask_pattern} matches {len(matches)} files, "
-                f"but none match the BIDS entities of {image_info['path'].name}. "
+                f"but none match the BIDS entities of {Path(image_info['path']).name}. "
                 "Check that masks and images have matching subject/session/task identifiers."
             )
             return None
@@ -3382,6 +3376,7 @@ class StatCraftPipeline:
 
         # Store difference images for permutation testing
         self._diff_images = diff_images
+        self._diff_image_infos = valid_paired_sample1
 
         # Store valid images for reporting
         # Use BOTH samples for BIDS prefix generation to exclude sample-specific entities
@@ -3679,6 +3674,7 @@ class StatCraftPipeline:
 
         # Store combined images for permutation testing / saving to data/ folder
         self._diff_images = combined_images
+        self._diff_image_infos = [images_by_entity[sample_names[0]][e] for e in valid_entities]
         self._glm_input_images = combined_images
         self._original_paired_sample1 = [images_by_entity[sample_names[0]][e] for e in valid_entities]
         self._original_paired_sample2 = [images_by_entity[sample_names[-1]][e] for e in valid_entities]
@@ -3880,7 +3876,8 @@ class StatCraftPipeline:
         logger.info("Fitting GLM...")
         # Get smoothing_fwhm from config
         smoothing_fwhm = self.config.get("glm", {}).get("smoothing_fwhm", 0)
-        self.glm = SecondLevelGLM(smoothing_fwhm=smoothing_fwhm)
+        self.glm = SecondLevelGLM(
+            mask=self._build_inference_mask(valid_images), smoothing_fwhm=smoothing_fwhm)
         self.glm.fit(self._image_paths, self._design_matrix)
 
         # Store input images for saving to data/ folder

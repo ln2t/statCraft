@@ -61,6 +61,105 @@ def run_route(pipeline, patterns, combine=False, **kwargs):
     return pipeline.run(sample_patterns=patterns, **kwargs)
 
 
+def test_combine_task_sets_produce_distinct_persistent_outputs(cohort, tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+    import statcraft.pipeline as pipeline_module
+
+    data, _ = cohort
+    for path in list(data.glob("*desc-[AB]_cvr.nii.gz")):
+        task = "task1" if "desc-A" in path.name else "task2"
+        other = "task3" if task == "task1" else "task4"
+        save_image(data / path.name.replace("_desc-", f"_task-{other}_desc-"),
+                   nib.load(path).get_fdata())
+        path.rename(data / path.name.replace("_desc-", f"_task-{task}_desc-"))
+
+    def report_generator(*args, **kwargs):
+        report = MagicMock()
+        report._is_map_empty.return_value = True
+
+        def save(filename):
+            path = tmp_path / "out" / filename
+            path.write_text("test report")
+            return path
+
+        report.save.side_effect = save
+        return report
+
+    monkeypatch.setattr(pipeline_module, "ReportGenerator", report_generator)
+    saved_results = []
+    prefixes = []
+    for first, second in (("task1", "task2"), ("task3", "task4"), ("task1", "task4")):
+        patterns = {"A": f"*task-{first}_*desc-A_*",
+                    "B": f"*task-{second}_*desc-B_*"}
+        pipeline, _ = pipeline_for(
+            cohort, tmp_path, combine=True,
+            paired_test={"sample_patterns": patterns, "pair_by": "sub,ses,run",
+                         "combine": "A-B"},
+            output={"generate_report": True, "save_supplementary_data": True},
+        )
+        result = pipeline.run(sample_patterns=patterns)
+        name = pipeline._generate_bids_prefix()
+        prefixes.append(name)
+        saved_results.append(result["saved_files"])
+        assert name.startswith(f"task-{first}{second}H")
+        assert all(name in str(result["saved_files"][key])
+                   for key in ("inference_mask", "A_minus_B_stat", "design_matrix", "config"))
+        assert list((tmp_path / "out").glob(f"{name}_contrast-*_report.html"))
+        diff_paths = [result["saved_files"][f"input_image_{i}"] for i in range(4)]
+        assert len(set(diff_paths)) == 4
+        for i, path in enumerate(diff_paths, 1):
+            assert f"sub-{i:02}_" in path.name
+            assert name.split("_")[0] in path.name
+            np.testing.assert_array_equal(nib.load(path).get_fdata(),
+                                          pipeline._diff_images[i - 1].get_fdata())
+
+    assert len(set(prefixes)) == 3
+    for saved in saved_results:
+        assert all(path.exists() for path in saved.values())
+    assert saved_results[0]["A_minus_B_stat"] != saved_results[1]["A_minus_B_stat"]
+    assert saved_results[0]["design_matrix"] != saved_results[1]["design_matrix"]
+    assert saved_results[0]["input_image_0"] != saved_results[2]["input_image_0"]
+
+
+@pytest.mark.parametrize("route", ["paired", "legacy"])
+def test_supplementary_difference_names_identify_correct_participants(cohort, tmp_path, route):
+    data, mask_path = cohort
+    for path in list(data.glob("*desc-[AB]_cvr.nii.gz")):
+        task = "task1" if "desc-A" in path.name else "task2"
+        if route == "legacy":
+            condition = "pre" if "desc-A" in path.name else "post"
+            name = path.name.replace("_ses-01_", f"_ses-{condition}_")
+            name = name.replace("_desc-", f"_task-{task}_desc-")
+        else:
+            name = path.name.replace("_desc-", f"_task-{task}_desc-")
+        path.rename(data / name)
+
+    if route == "paired":
+        pipeline, patterns = pipeline_for(cohort, tmp_path, output={
+            "generate_report": False, "save_supplementary_data": True})
+        result = pipeline.run(sample_patterns=patterns)
+    else:
+        pipeline = StatCraftPipeline(data, tmp_path / "out", [], config={
+            "analysis_type": "paired",
+            "paired_test": {"pair_by": "session", "condition1": "pre", "condition2": "post"},
+            "inference_mask": str(mask_path),
+            "output": {"generate_report": False, "save_supplementary_data": True},
+            "inference": {"corrections": []},
+            "verbose": 0,
+        })
+        pipeline.annotate_clusters = lambda: {}
+        result = pipeline.run(pattern="*task-*_cvr.nii.gz")
+
+    task = pipeline._generate_bids_prefix().split("_")[0]
+    paths = [result["saved_files"][f"input_image_{i}"] for i in range(4)]
+    assert len(set(paths)) == 4
+    for subject, path in enumerate(paths, 1):
+        assert f"sub-{subject:02}_" in path.name
+        assert task in path.name
+        np.testing.assert_array_equal(nib.load(path).get_fdata(),
+                                      pipeline._diff_images[subject - 1].get_fdata())
+
+
 @pytest.mark.parametrize("combine", [False, True])
 def test_actual_routes_reject_duplicate_complete_keys(cohort, tmp_path, combine):
     data, _ = cohort

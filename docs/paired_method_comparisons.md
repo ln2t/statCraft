@@ -43,13 +43,18 @@ maps' three-dimensional shape and affine (absolute tolerance `1e-5`, no relative
 tolerance). Resample intentionally upstream and record that operation; StatCraft
 does not silently resample these masks.
 
-The effective inference mask is the intersection of the explicit masks and
+The effective inference mask is the intersection of the anatomical masks and
 finite (`not NaN/Inf`) support of **every original included map**. It is computed
 before normalization and before differences/combinations. A zero map value or a
 zero difference remains valid. Scaling and z-score ROIs never select the testing
-domain. Without `--inference-mask`, all shared finite voxels, including zero
-background, are included and a warning is emitted. This fallback is not an
-anatomical brain-mask estimate; use an explicit domain for a manuscript analysis.
+domain. Without `--inference-mask`, subject-specific `*desc-brain_mask.nii`
+or `.nii.gz` files next to each input are matched by BIDS entities. If any
+mask is missing, StatCraft warns and uses Nilearn's MNI152 brain mask instead
+of the individual masks, resampled to the input grid using nearest-neighbor
+interpolation and intersected with finite input support. This fallback assumes
+MNI152 registration, which grid checks cannot verify, and does not guarantee
+individual coverage. Inspect the saved mask and JSON provenance; for a manuscript
+analysis, prefer a prespecified mask reflecting the actual participants.
 
 The exact same effective mask is used by the GLM, uncorrected/FDR/Bonferroni
 thresholding and permutation inference. Values outside that mask are zeroed
