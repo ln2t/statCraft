@@ -357,3 +357,57 @@ Other key dependencies:
 
 - [PyBIDS](https://bids-standard.github.io/pybids/) - BIDS data handling
 - [NiBabel](https://nipy.org/nibabel/) - NIfTI file handling
+
+## Image geometry diagnostics and optional harmonization
+
+The same nominal voxel resolution does not guarantee the same sampling grid:
+translations (image origin), dimensions, orientation, and the precise affine
+coefficients can differ after preprocessing. StatCraft compares the full spatial
+shape and affine, with absolute tolerance `1e-5` and relative tolerance zero.
+Matching grids do not establish anatomical registration.
+
+The HTML analysis report includes **Image geometry (all collected images)**,
+covering all distinct selected input files, including geometry exclusions and
+files subsequently excluded by pairing. It describes original geometry before
+any resampling: counts of matching, mismatched and unreadable images; exact grid
+group counts/sizes; minimum, median and maximum affine/origin/corner differences;
+and a per-file table with shape, voxel sizes, orientation, full affine and status.
+The corner metric compares identical voxel indices under the two affines, not
+anatomical registration accuracy. Shape differences are shown separately.
+`geometry.html` and `geometry.json` are written in the output directory as files
+are discovered, including when an analysis subsequently fails. These files are
+replaced on each run; the main analysis report also embeds the statistics.
+
+By default, mismatched maps are excluded (the entire pair/map set is excluded
+for paired/combined analyses). Enable resampling explicitly:
+
+```bash
+statcraft /path/to/trialix /path/to/statcraft-output group \
+  --config /path/to/config_macro-micro.yaml \
+  --harmonize-affines \
+  --reference-image "$FSLDIR/data/standard/MNI152_T1_2mm.nii.gz"
+```
+
+`--reference-image PATH` accepts a 3D or 4D NIfTI. Only its spatial shape and
+affine are used; its intensities/time dimension do not enter the analysis. If
+omitted, the first readable valid 3D image encountered defines the reference.
+Supplying a reference without `--harmonize-affines` changes the validation grid
+but does not enable resampling. Pick a reference in the **same anatomical space**
+as the inputs; for example, an FSL MNI152 template is appropriate only for inputs
+already registered to the corresponding MNI space.
+
+Harmonization resamples mismatched maps with continuous interpolation and
+inference/normalization masks with nearest-neighbor interpolation before
+normalization and map arithmetic. Originals are untouched; resampled maps are
+saved under `harmonized/<source-path-hash>/` in the output directory and recorded
+in `geometry.json`. Values outside the original field of view are filled with
+zero. Existing inference-mask intersection policies still apply. Resampling can
+change values and coverage; it does not estimate or fix anatomical registration,
+and cannot recover missing data. Inspect the audit and inference mask.
+
+Equivalent YAML settings (CLI arguments override them):
+
+```yaml
+harmonize_affines: true
+reference_image: /opt/fsl/data/standard/MNI152_T1_2mm.nii.gz
+```

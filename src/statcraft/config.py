@@ -24,6 +24,8 @@ DEFAULT_CONFIG = {
 
     # File pattern for finding images
     "file_pattern": None,
+    "harmonize_affines": False,
+    "reference_image": None,
 
     # Exclude pattern for filtering out unwanted files
     "exclude_pattern": None,
@@ -229,6 +231,12 @@ class Config:
         """
         errors = []
         
+        if not isinstance(self.data.get("harmonize_affines"), bool):
+            errors.append("harmonize_affines must be a boolean")
+        if self.data.get("reference_image") is not None and not isinstance(
+                self.data["reference_image"], (str, Path)):
+            errors.append("reference_image must be a NIfTI path")
+
         # Validate analysis type
         valid_types = ["glm", "one-sample", "two-sample", "paired", "one_sample", "two_sample"]
         if self.data["analysis_type"] not in valid_types:
@@ -519,6 +527,11 @@ participant_label: null
 #   file_pattern: "**/*GS*cvr*.nii.gz"
 # Set to null to discover all .nii.gz files
 file_pattern: null
+
+# Optional resampling to a shared spatial grid (not anatomical registration).
+harmonize_affines: false
+# 3D or 4D NIfTI; only shape[:3] and affine are used. Null selects the first map.
+reference_image: null
 
 # Pattern to exclude files after initial matching
 # CLI equivalent: --exclude / -e

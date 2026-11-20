@@ -283,6 +283,8 @@ class DataLoader:
         else:
             logger.info(f"Found {len(images)} images matching criteria")
         
+        if getattr(self, "geometry_observer", None):
+            self.geometry_observer(images)
         return images
     
     def _get_images_pybids(

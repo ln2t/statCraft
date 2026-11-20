@@ -23,6 +23,7 @@ from statcraft.core.glm import SecondLevelGLM, NormalizationMixin, ConnectivityG
 from statcraft.core.inference import StatisticalInference, ConnectivityInference
 from statcraft.core.annotation import ClusterAnnotator
 from statcraft.core.report import ReportGenerator
+from statcraft.core.geometry import GeometryAudit
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,10 @@ class StatCraftPipeline:
             analysis_type=self.config.get("analysis_type", "glm"),
         )
         
+        self.geometry = GeometryAudit(self.output_dir, self.config.get("reference_image"),
+                                      self.config.get("harmonize_affines", False))
+        self.data_loader.geometry_observer = self.geometry.collect
+
         self.glm: Optional[SecondLevelGLM] = None
         self.connectivity_glm: Optional[ConnectivityGLM] = None
         self.design_matrix_builder: Optional[DesignMatrixBuilder] = None
@@ -274,7 +279,7 @@ class StatCraftPipeline:
             valid_images, invalid_images = self.data_loader.validate_connectivity_matrices(images)
             validation_name = "connectivity matrix"
         else:
-            valid_images, invalid_images = self.data_loader.validate_mni_space(images)
+            valid_images, invalid_images = self.geometry.validate(images)
             validation_name = "MNI space"
 
         if not valid_images:
@@ -622,6 +627,8 @@ class StatCraftPipeline:
         if norm_config.get("method") == "mean":
             logger.info("Applying mean normalization...")
             norm_mask = norm_config.get("mask")
+            if norm_mask is not None and self.config.get("harmonize_affines"):
+                norm_mask = self.geometry.mask(nib.load(norm_mask), self.geometry.reference)
             normalized = NormalizationMixin.mean_normalize(
                 self._image_paths,
                 mask=norm_mask,
@@ -651,7 +658,7 @@ class StatCraftPipeline:
             )
 
             candidates = [image for pair in pairs for image in pair]
-            valid, invalid = self.data_loader.validate_mni_space(candidates)
+            valid, invalid = self.geometry.validate(candidates)
             valid_paths = {str(Path(image['path']).resolve()) for image in valid}
             pairs = [pair for pair in pairs if all(
                 str(Path(image['path']).resolve()) in valid_paths for image in pair)]
@@ -1011,6 +1018,10 @@ class StatCraftPipeline:
             masks=masks_used_dict,
             scaling_rois=scaling_rois_used_dict,
         )
+
+        if self.geometry.records:
+            self.report.add_section("Image geometry (all collected images)",
+                                    self.geometry.html(), "text", level=2)
 
         # Add methodology section (Level 2)
         inf_config = self.config.get("inference", {})
@@ -1621,6 +1632,11 @@ class StatCraftPipeline:
             cmd_parts.append(f"--combine \"{paired_test['combine']}\"")
 
         # Add inference settings
+        if config_dict.get('harmonize_affines'):
+            cmd_parts.append('--harmonize-affines')
+        if config_dict.get('reference_image'):
+            import shlex
+            cmd_parts.append('--reference-image ' + shlex.quote(str(config_dict['reference_image'])))
         if config_dict.get('inference_mask'):
             cmd_parts.append(f"--inference-mask \"{config_dict['inference_mask']}\"")
         inference = config_dict.get('inference', {})
@@ -1884,6 +1900,14 @@ class StatCraftPipeline:
         maps_dir.mkdir(parents=True, exist_ok=True)
         tables_dir.mkdir(parents=True, exist_ok=True)
         logs_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.geometry.records:
+            import shutil
+            for extension in ("html", "json"):
+                source = self.output_dir / f"geometry.{extension}"
+                destination = logs_dir / source.name
+                shutil.copy2(source, destination)
+                saved_files[f"geometry_{extension}"] = destination
 
         if hasattr(self, "_inference_mask"):
             import json
@@ -2482,7 +2506,7 @@ class StatCraftPipeline:
                 path = self._find_mask_for_image(info, str(normalization_pattern))
                 if path is None:
                     raise FileNotFoundError(f"No normalization mask matches {info['path']}")
-                normalization_mask = nib.load(path, mmap=True)
+                normalization_mask = self.geometry.mask(nib.load(path, mmap=True), reference)
                 self._assert_same_grid(normalization_mask, reference, f"Normalization mask {path}")
                 values = np.asarray(normalization_mask.dataobj, dtype=np.float64)
                 if not np.all(np.isfinite(values)) or np.any(values < 0):
@@ -2493,12 +2517,12 @@ class StatCraftPipeline:
                 path = self._find_mask_for_image(info, str(mask_pattern), strict_entities=True)
             else:
                 path = self._find_mask_for_image(
-                    info, str(Path(info["path"]).parent / "*desc-brain_mask.nii*"),
+                    info, str(Path(info.get("original_path", info["path"])).parent / "*desc-brain_mask.nii*"),
                     require_subject=True, strict_entities=True)
             if path is None:
                 missing.append(str(info["path"]))
             else:
-                mask_image = nib.load(path, mmap=True)
+                mask_image = self.geometry.mask(nib.load(path, mmap=True), reference)
                 self._assert_same_grid(mask_image, reference, f"Inference mask {path}")
                 mask_data = np.asarray(mask_image.dataobj, dtype=np.float64)
                 if not np.all(np.isfinite(mask_data)) or np.any(mask_data < 0):
@@ -2888,8 +2912,9 @@ class StatCraftPipeline:
             if is_fixed_mask:
                 # Use the same mask for all images
                 try:
+                    prepared_mask = self.geometry.mask(fixed_mask, nib.load(img_info["path"]))
                     scaled_img = self._scale_image_by_mask(
-                        img_info["path"], fixed_mask, getattr(self, '_paired_normalization_support', None),
+                        img_info["path"], prepared_mask, getattr(self, '_paired_normalization_support', None),
                         minimum_ratio, positive_mean, normalization_qc)
                     self._scaling_rois_used[str(img_info["path"])] = scaling_pattern
                     n_scaled += 1
@@ -2906,8 +2931,9 @@ class StatCraftPipeline:
                     raise FileNotFoundError(error_msg)
 
                 try:
+                    prepared_mask = self.geometry.mask(nib.load(mask_path), nib.load(img_info["path"]))
                     scaled_img = self._scale_image_by_mask(
-                        img_info["path"], mask_path, getattr(self, '_paired_normalization_support', None),
+                        img_info["path"], prepared_mask, getattr(self, '_paired_normalization_support', None),
                         minimum_ratio, positive_mean, normalization_qc)
                     self._scaling_rois_used[str(img_info["path"])] = str(mask_path)
                     n_scaled += 1
@@ -3013,6 +3039,7 @@ class StatCraftPipeline:
                 # Store the mask path used for this image (for saving to outputs)
                 self._zscore_masks_used[str(img_path)] = mask_path_used
 
+                mask_img = self.geometry.mask(mask_img, img)
                 self._assert_same_grid(mask_img, img, f"Normalization mask {mask_path_used}")
                 mask_values = np.asarray(mask_img.dataobj, dtype=np.float64)
                 if not np.all(np.isfinite(mask_values)) or np.any(mask_values < 0):
@@ -3226,7 +3253,7 @@ class StatCraftPipeline:
 
         # Validate MNI space for all images
         all_images = paired_sample1 + paired_sample2
-        valid_images, invalid_images = self.data_loader.validate_mni_space(all_images)
+        valid_images, invalid_images = self.geometry.validate(all_images)
 
         if invalid_images:
             logger.warning(f"Excluded {len(invalid_images)} invalid images")
@@ -3583,7 +3610,7 @@ class StatCraftPipeline:
             for entity in complete_entities
         }
         all_images = [img for imgs in per_entity_images.values() for img in imgs]
-        valid_images, invalid_images = self.data_loader.validate_mni_space(all_images)
+        valid_images, invalid_images = self.geometry.validate(all_images)
 
         if invalid_images:
             logger.warning(f"Excluded {len(invalid_images)} invalid images")
@@ -3796,7 +3823,7 @@ class StatCraftPipeline:
             all_images.extend(images)
 
         # Validate MNI space
-        valid_images, invalid_images = self.data_loader.validate_mni_space(all_images)
+        valid_images, invalid_images = self.geometry.validate(all_images)
 
         if not valid_images:
             raise ValueError("No valid images after MNI space validation")

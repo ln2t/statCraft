@@ -41,7 +41,11 @@ all observations; a quoted glob matches per-observation masks using exact BIDS
 entity values. Ambiguous matches fail. All masks must already match the input
 maps' three-dimensional shape and affine (absolute tolerance `1e-5`, no relative
 tolerance). Resample intentionally upstream and record that operation; StatCraft
-does not silently resample these masks.
+does not silently resample these masks. With explicit `--harmonize-affines`,
+maps are resampled continuously and masks with nearest-neighbor interpolation
+to the chosen spatial reference before arithmetic. See the
+[geometry diagnostics and harmonization guide](../README.md#image-geometry-diagnostics-and-optional-harmonization)
+for full audit statistics and a `--reference-image` FSL MNI template example.
 
 The effective inference mask is the intersection of the anatomical masks and
 finite (`not NaN/Inf`) support of **every original included map**. It is computed

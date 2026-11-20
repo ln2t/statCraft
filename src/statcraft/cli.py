@@ -484,6 +484,14 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     paired.add_argument(
+        "--harmonize-affines", action="store_true",
+        help="Resample mismatched maps to the reference spatial grid (continuous interpolation).",
+    )
+    paired.add_argument(
+        "--reference-image", metavar="PATH",
+        help="3D or 4D NIfTI defining the spatial reference grid; defaults to the first image.",
+    )
+    paired.add_argument(
         "--inference-mask",
         metavar="PATH_OR_GLOB",
         help="Anatomical test domain for image analyses. "
@@ -755,6 +763,8 @@ def main():
             if scaling and cfg.get('scaling_key'):
                 scaling = f"{cfg.get('scaling_key')}={scaling}"
             parser.set_defaults(
+                harmonize_affines=cfg.get("harmonize_affines", False),
+                reference_image=cfg.get("reference_image"),
                 analysis_type=cfg.get('analysis_type'), participant_label=cfg.get('participant_label'),
                 pattern=cfg.get('file_pattern'),
                 exclude=exclude,
@@ -978,6 +988,9 @@ def main():
     if sample_patterns and args.analysis_type == "two-sample":
         config_overrides["sample_patterns"] = sample_patterns
     
+    config_overrides["harmonize_affines"] = args.harmonize_affines
+    config_overrides["reference_image"] = args.reference_image
+
     # Inference settings
     if args.inference_mask:
         config_overrides["inference_mask"] = args.inference_mask
